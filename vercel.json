@@ -1,0 +1,9 @@
+{
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/", "destination": "/MVP/html/GeoSit_Tactical_Console.html" },
+    { "source": "/console", "destination": "/MVP/html/GeoSit_Tactical_Console.html" },
+    { "source": "/workflow", "destination": "/MVP/html/workflow_diagram.html" },
+    { "source": "/influence", "destination": "/MVP/html/influence_map.html" }
+  ]
+}
