@@ -1,0 +1,18 @@
+# MATLAB autosave and recovery files
+*.asv
+*.m~
+*.tmp
+*.log
+
+# Office temporary/lock files
+~$*
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor and IDE metadata
+.vscode/
+.idea/
+*.swp

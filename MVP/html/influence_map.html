@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stakeholder Influence Map</title>
+  <style>
+    :root {
+      --navy-header: #072540;
+      --navy-border: #051a2d;
+      --navy-text: #0b2545;
+      --card-title: #06213f;
+      --text-muted: #334e68;
+      
+      /* Role Colors */
+      --color-end-user: #43a047;
+      --bg-end-user: #e8f5e9;
+      --border-end-user: #66bb6a;
+      
+      --color-influencer: #00acc1;
+      --bg-influencer: #e0f7fa;
+      --border-influencer: #4dd0e1;
+      
+      --color-recommender: #1e88e5;
+      --bg-recommender: #e3f2fd;
+      --border-recommender: #64b5f6;
+      
+      --color-decision: #fbc02d;
+      --bg-decision: #fff9c4;
+      --border-decision: #fdd835;
+      
+      --color-buyer: #8e24aa;
+      --bg-buyer: #f3e5f5;
+      --border-buyer: #ba68c8;
+      
+      --color-champion: #ec407a;
+      --bg-champion: #fce4ec;
+      --border-champion: #f48fb1;
+      
+      --color-saboteur: #e53935;
+      --bg-saboteur: #ffebee;
+      --border-saboteur: #ef5350;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background: #f0f4f8;
+      padding: 10px 18px;
+      display: flex;
+      justify-content: center;
+      color: var(--navy-text);
+    }
+
+    .container {
+      width: 100%;
+      max-width: 1560px;
+      background: #ffffff;
+      border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+      border: 1px solid #cfd8dc;
+    }
+
+    /* Top Navy Banner */
+    .header-banner {
+      background: var(--navy-header);
+      color: #ffffff;
+      padding: 10px 20px 8px 20px;
+    }
+
+    .header-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .header-title {
+      font-size: 1.55rem;
+      font-weight: 800;
+      letter-spacing: -0.3px;
+    }
+
+    .arrow-legend {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 6px;
+      padding: 4px 10px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 0.78rem;
+    }
+
+    .legend-line-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .legend-svg-line {
+      width: 44px;
+      height: 10px;
+    }
+
+    /* Role Legend Badges */
+    .role-legend-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 14px;
+      padding-top: 4px;
+      border-top: 1px solid rgba(255, 255, 255, 0.15);
+    }
+
+    .role-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.76rem;
+      font-weight: 600;
+      color: #e2e8f0;
+    }
+
+    .role-box {
+      width: 18px;
+      height: 12px;
+      border-radius: 2px;
+      display: inline-block;
+    }
+
+    /* Map Body Grid */
+    .map-body {
+      padding: 16px 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* Tier Row Structure */
+    .tier-row {
+      display: grid;
+      grid-template-columns: 36px 1fr;
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .tier-label-col {
+      background: #e2e8f0;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      border: 1px solid #cbd5e1;
+    }
+
+    .tier-label-vertical {
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      font-weight: 700;
+      font-size: 0.78rem;
+      color: #1e293b;
+      letter-spacing: 0.3px;
+      text-align: center;
+      white-space: nowrap;
+      padding: 4px 0;
+    }
+
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    /* Card Styling */
+    .card {
+      border-radius: 8px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      border-width: 1.5px;
+      border-style: solid;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      position: relative;
+    }
+
+    .card:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.07);
+    }
+
+    .card > div:first-child {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .card-top {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .card-icon {
+      flex-shrink: 0;
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .card-icon svg {
+      width: 20px;
+      height: 20px;
+      fill: #0b2545;
+    }
+
+    .card-header-text {
+      flex: 1;
+    }
+
+    .card-title {
+      font-size: 0.95rem;
+      font-weight: 800;
+      color: var(--card-title);
+      line-height: 1.25;
+    }
+
+    .card-role {
+      font-size: 0.8rem;
+      font-style: italic;
+      font-weight: 700;
+      margin-top: 2px;
+      margin-bottom: 2px;
+    }
+
+    .card-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      font-size: 0.81rem;
+      line-height: 1.45;
+      color: #243b53;
+      margin-top: 4px;
+      margin-bottom: 8px;
+    }
+
+    .card-body-dual {
+      justify-content: space-around;
+      gap: 12px;
+      padding: 8px 0;
+    }
+
+    .tda-sub-block {
+      padding: 8px 10px;
+      border-radius: 6px;
+      line-height: 1.42;
+    }
+
+    .tda-rec-sub {
+      background: rgba(30, 136, 229, 0.08);
+      border-left: 3px solid #1e88e5;
+    }
+
+    .tda-sab-sub {
+      background: rgba(229, 57, 53, 0.08);
+      border-left: 3px solid #e53935;
+    }
+
+    .card-body ul {
+      list-style-type: disc;
+      padding-left: 14px;
+      margin: auto 0;
+    }
+
+    .card-body li {
+      margin-bottom: 4px;
+    }
+
+    .card-footer {
+      border-top: 1px solid rgba(0, 0, 0, 0.1);
+      padding-top: 8px;
+      font-size: 0.76rem;
+      color: #102a43;
+      line-height: 1.3;
+    }
+
+    .card-footer strong {
+      font-weight: 800;
+      color: #0b2545;
+    }
+
+    /* Card Specific Colors */
+    .card-influencer {
+      background-color: var(--bg-influencer);
+      border-color: var(--border-influencer);
+    }
+    .card-influencer .card-role {
+      font-size: 0.8rem;
+      font-style: italic;
+      font-weight: 700;
+      margin-top: 2px;
+      margin-bottom: 2px;
+    }
+
+    .card-recommender {
+      background-color: var(--bg-recommender);
+      border-color: var(--border-recommender);
+    }
+    .card-recommender .card-role {
+      font-size: 0.8rem;
+      font-style: italic;
+      font-weight: 700;
+      margin-top: 2px;
+      margin-bottom: 2px;
+    }
+
+    .card-end-user {
+      background-color: var(--bg-end-user);
+      border-color: var(--border-end-user);
+    }
+    .card-end-user .card-role {
+      font-size: 0.8rem;
+      font-style: italic;
+      font-weight: 700;
+      margin-top: 2px;
+      margin-bottom: 2px;
+    }
+
+    .card-decision {
+      background-color: var(--bg-decision);
+      border-color: var(--border-decision);
+    }
+    .card-decision .card-role {
+      font-size: 0.8rem;
+      font-style: italic;
+      font-weight: 700;
+      margin-top: 2px;
+      margin-bottom: 2px;
+    }
+
+    .card-saboteur {
+      background-color: var(--bg-saboteur);
+      border-color: var(--border-saboteur);
+    }
+    .card-saboteur .card-role {
+      font-size: 0.8rem;
+      font-style: italic;
+      font-weight: 700;
+      margin-top: 2px;
+      margin-bottom: 2px;
+    }
+
+    .card-champion {
+      background-color: var(--bg-champion);
+      border-color: var(--border-champion);
+    }
+    .card-champion .card-role {
+      font-size: 0.8rem;
+      font-style: italic;
+      font-weight: 700;
+      margin-top: 2px;
+      margin-bottom: 2px;
+    }
+
+    .card-buyer {
+      background-color: var(--bg-buyer);
+      border-color: var(--border-buyer);
+    }
+    .card-buyer .card-role {
+      font-size: 0.8rem;
+      font-style: italic;
+      font-weight: 700;
+      margin-top: 2px;
+      margin-bottom: 2px;
+    }
+
+    /* Connector Bars Between Tiers */
+    .tier-connector {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+      margin: 4px 0;
+      padding-left: 62px;
+    }
+
+    .connector-box {
+      background: #0f3557;
+      color: #ffffff;
+      padding: 6px 18px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
+      z-index: 2;
+    }
+
+    .connector-line-svg {
+      width: 100%;
+      height: 48px;
+      display: block;
+    }
+
+    /* Row 2 internal horizontal connectors */
+    .row2-grid {
+      position: relative;
+    }
+
+    .connector-badge {
+      background: #ffffff;
+      border: 1.5px solid #0f3557;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #0f3557;
+      text-align: center;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+      white-space: nowrap;
+    }
+
+    /* Inter-card Arrow Overlay Container */
+    .intercard-connectors {
+      display: grid;
+      grid-template-columns: 1fr 120px 1fr 120px 1fr;
+      align-items: center;
+    }
+
+    .h-connector-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      width: 100%;
+    }
+
+    .arrow-sub-item {
+      display: flex;
+      align-items: center;
+      flex-direction: column;
+      width: 100%;
+      gap: 2px;
+    }
+
+    .arrow-text {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #0b2545;
+      text-align: center;
+      line-height: 1.1;
+    }
+
+    /* Tiers 2 & 3 Combined Layout */
+    .tiers-2-3-wrapper {
+      display: grid;
+      grid-template-columns: 36px 1fr;
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .tiers-2-3-labels {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      height: 100%;
+    }
+
+    .tier-label-half {
+      flex: 1;
+      background: #e2e8f0;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid #cbd5e1;
+    }
+
+    .tiers-2-3-grid {
+      display: grid;
+      grid-template-columns: 1fr 70px 1fr 70px 1fr;
+      grid-template-rows: auto 54px auto;
+      gap: 0;
+      align-items: stretch;
+    }
+
+    /* Dual Color TDA Card */
+    .card-dual-tda {
+      grid-column: 1;
+      grid-row: 1 / span 3;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      border: 1.5px solid #2563eb;
+      background: linear-gradient(to bottom, #edf6fe 48%, #fdf1f2 52%);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+      padding: 14px 16px;
+    }
+
+    .dual-badges {
+      display: flex;
+      gap: 5px;
+    }
+
+    .dual-badge-pill {
+      font-size: 0.68rem;
+      font-weight: 800;
+      padding: 1px 6px;
+      border-radius: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .pill-rec {
+      background: #1e88e5;
+      color: #ffffff;
+    }
+
+    .pill-sab {
+      background: #e53935;
+      color: #ffffff;
+    }
+
+    @media (max-width: 1024px) {
+      .cards-grid {
+        grid-template-columns: 1fr;
+      }
+      .tier-row {
+        grid-template-columns: 1fr;
+      }
+      .tiers-2-3-wrapper {
+        grid-template-columns: 1fr;
+      }
+      .tiers-2-3-labels {
+        flex-direction: row;
+      }
+      .tier-label-half {
+        min-height: auto;
+      }
+      .tier-label-vertical {
+        writing-mode: horizontal-tb;
+        transform: none;
+        padding: 8px;
+      }
+      .tiers-2-3-grid {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto;
+        gap: 16px;
+      }
+      .card-dual-tda {
+        grid-column: auto;
+        grid-row: auto;
+      }
+      .h-connector-group, .middle-advocacy-row {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <!-- Top Banner -->
+  <header class="header-banner">
+    <div class="header-top">
+      <h1 class="header-title">Influence Map</h1>
+      <div class="arrow-legend">
+        <div class="legend-line-item">
+          <svg class="legend-svg-line" viewBox="0 0 50 12">
+            <line x1="0" y1="6" x2="42" y2="6" stroke="#ffffff" stroke-width="2.5" />
+            <polygon points="40,2 50,6 40,10" fill="#ffffff" />
+          </svg>
+          <span>= Direct influence</span>
+        </div>
+        <div class="legend-line-item">
+          <svg class="legend-svg-line" viewBox="0 0 50 12">
+            <line x1="0" y1="6" x2="42" y2="6" stroke="#ffffff" stroke-width="2" stroke-dasharray="4,3" />
+            <polygon points="40,2 50,6 40,10" fill="#ffffff" />
+          </svg>
+          <span>= Indirect influence</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stakeholder Roles Legend -->
+    <div class="role-legend-bar">
+      <div class="role-badge">
+        <span class="role-box" style="background-color: var(--color-end-user);"></span> = End User
+      </div>
+      <div class="role-badge">
+        <span class="role-box" style="background-color: var(--color-influencer);"></span> = Influencer
+      </div>
+      <div class="role-badge">
+        <span class="role-box" style="background-color: var(--color-recommender);"></span> = Recommender
+      </div>
+      <div class="role-badge">
+        <span class="role-box" style="background-color: var(--color-decision);"></span> = Decision Maker
+      </div>
+      <div class="role-badge">
+        <span class="role-box" style="background-color: var(--color-buyer);"></span> = Economic Buyer
+      </div>
+      <div class="role-badge">
+        <span class="role-box" style="background-color: var(--color-champion);"></span> = champion
+      </div>
+      <div class="role-badge">
+        <span class="role-box" style="background-color: var(--color-saboteur);"></span> = Saboteur
+      </div>
+    </div>
+  </header>
+
+  <div class="map-body">
+
+    <!-- TIER 1: Scientific & Functional Backing -->
+    <section class="tier-row">
+      <div class="tier-label-col">
+        <div class="tier-label-vertical">Scientific & Functional Backing</div>
+      </div>
+      <div class="cards-grid">
+        
+        <!-- Card 1: Data Collection Providers -->
+        <div class="card card-influencer">
+          <div>
+            <div class="card-top">
+              <div class="card-icon" style="background: rgba(0, 172, 193, 0.15);">
+                <!-- Satellite Dish SVG -->
+                <svg viewBox="0 0 24 24">
+                  <path d="M4.93 4.93A10 10 0 0 1 19.07 19.07l-1.41-1.41A8 8 0 0 0 6.34 6.34L4.93 4.93m2.83 2.83A6 6 0 0 1 16.24 16.24l-1.41-1.41A4 4 0 0 0 9.17 9.17L7.76 7.76m2.83 2.83a2 2 0 0 1 2.83 2.83l-4.24 4.24-1.42-1.41 2.83-2.83M2 22l4-4 1.41 1.41L3.41 23.41 2 22z"/>
+                </svg>
+              </div>
+              <div class="card-header-text">
+                <div class="card-title">Data Collection Providers</div>
+                <div class="card-role">Influencer</div>
+              </div>
+            </div>
+            <div class="card-body">
+              <ul>
+                <li>Gather physical ocean observations via satellites, uncrewed vehicles, and profiling floats.</li>
+                <li>Source the raw temperature and salinity inputs, where sparse ocean sampling forms the root cause of downstream uncertainty.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="card-footer">
+            <strong>People:</strong> Dr. Stephan Howden (USM), NOAA
+          </div>
+        </div>
+
+        <!-- Card 2: NRL Modelers & SMEs -->
+        <div class="card card-influencer">
+          <div>
+            <div class="card-top">
+              <div class="card-icon" style="background: rgba(0, 172, 193, 0.15);">
+                <!-- Database Cylinders SVG -->
+                <svg viewBox="0 0 24 24">
+                  <path d="M12 2C6.48 2 2 3.34 2 5v14c0 1.66 4.48 3 10 3s10-1.34 10-3V5c0-1.66-4.48-3-10-3zm0 2c4.42 0 8 .9 8 1.5S16.42 7 12 7 4 6.1 4 5.5 7.58 4 12 4zm8 15c0 .6-3.58 1.5-8 1.5S4 19.6 4 19v-2.17c1.78 1.05 4.7 1.67 8 1.67s6.22-.62 8-1.67V19zm0-4.5c0 .6-3.58 1.5-8 1.5s-8-.9-8-1.5v-2.17c1.78 1.05 4.7 1.67 8 1.67s6.22-.62 8-1.67v2.17zm0-4.5c0 .6-3.58 1.5-8 1.5s-8-.9-8-1.5V8.33c1.78 1.05 4.7 1.67 8 1.67s6.22-.62 8-1.67V10z"/>
+                </svg>
+              </div>
+              <div class="card-header-text">
+                <div class="card-title">Environmental Modelers & SMEs (NRL)</div>
+                <div class="card-role">Influencer</div>
+              </div>
+            </div>
+            <div class="card-body">
+              <ul>
+                <li>Build baseline ocean forecast models and 2D seabed maps.</li>
+                <li>Use machine learning to interpolate sparse observations and generate uncertainty metrics that currently struggle to reach the fleet.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="card-footer">
+            <strong>People:</strong> Dr. Warren Wood, Dr. Benjamin Phrampus, Dr. Robert Helber, John Osborne
+          </div>
+        </div>
+
+        <!-- Card 3: Systems R&D & Acoustic Experts -->
+        <div class="card card-influencer">
+          <div>
+            <div class="card-top">
+              <div class="card-icon" style="background: rgba(0, 172, 193, 0.15);">
+                <!-- Gear SVG -->
+                <svg viewBox="0 0 24 24">
+                  <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84c-.24 0-.45.17-.48.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.23-.09-.49 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.23.09.49 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+                </svg>
+              </div>
+              <div class="card-header-text">
+                <div class="card-title">Acoustic & Systems Experts (NUWC)</div>
+                <div class="card-role">Influencer</div>
+              </div>
+            </div>
+            <div class="card-body">
+              <ul>
+                <li>Process raw acoustic backscatter and ambient ocean noise to predict sonar performance.</li>
+                <li>Attempt to translate complex environmental variables into tactical formats without causing cognitive overload for operators.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="card-footer">
+            <strong>People:</strong> Madeleine Harvey, Dr. Lauren Freeman, Dr. Rendhy Sapiie, David Pistacchio
+          </div>
+        </div>
+
+
+        </div>
+    </section>
+
+    <!-- Connector: Tier 1 -> Tier 2 -->
+    <div style="padding-left: 46px; margin: 2px 0;">
+      <svg style="width: 100%; height: 42px; display: block; overflow: visible;" viewBox="0 0 1200 42">
+        <!-- Lines from 3 top cards converging to center -->
+        <path d="M 200 0 L 200 18 L 1000 18" fill="none" stroke="#0b2545" stroke-width="2.2" />
+        <path d="M 1000 0 L 1000 18" fill="none" stroke="#0b2545" stroke-width="2.2" />
+        <line x1="600" y1="0" x2="600" y2="34" stroke="#0b2545" stroke-width="2.2" />
+        <!-- Arrowhead exactly touching the box below at y=42 -->
+        <polygon points="593,32 600,42 607,32" fill="#0b2545" />
+        
+        <!-- Text pill badge over the line -->
+        <rect x="430" y="7" width="340" height="22" rx="11" fill="#ffffff" stroke="#0b2545" stroke-width="1.5" />
+        <text x="600" y="22" text-anchor="middle" font-size="11" font-weight="800" fill="#0b2545" letter-spacing="0.2">Data, models, and technical expertise</text>
+      </svg>
+    </div>
+
+    <!-- TIERS 2 & 3 UNIFIED: Frontline / Tactical & Program / Procurement -->
+    <section class="tiers-2-3-wrapper">
+      <!-- Left Vertical Labels for Tiers 2 & 3 -->
+      <div class="tiers-2-3-labels">
+        <div class="tier-label-half">
+          <div class="tier-label-vertical">Frontline and Tactical</div>
+        </div>
+        <div class="tier-label-half">
+          <div class="tier-label-vertical">Program & Procurement</div>
+        </div>
+      </div>
+
+      <!-- Main Grid for Tiers 2 & 3 -->
+      <div class="tiers-2-3-grid">
+
+        <!-- Card: TDA Integrator (1 Simplified Box with Division of Color: Spans Tiers 2 & 3) -->
+        <div class="card card-dual-tda">
+          <div class="card-top" style="margin-bottom: 2px;">
+            <div class="card-icon" style="background: rgba(30, 136, 229, 0.15);">
+              <!-- Laptop SVG -->
+              <svg viewBox="0 0 24 24" style="fill: #1e88e5;">
+                <path d="M20 18c1.1 0 1.99-.9 1.99-2L22 5c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2H0c0 1.1.9 2 2 2h20c1.1 0 2-.9 2-2h-4zM4 5h16v11H4V5z"/>
+              </svg>
+            </div>
+            <div class="card-header-text">
+              <div class="card-title">Tactical Decision Aid Integrator</div>
+              <div style="display: flex; gap: 5px; margin-top: 2px;">
+                <span class="dual-badge-pill pill-rec">Recommender</span>
+                <span class="dual-badge-pill pill-sab">Saboteur</span>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Centered Bullets: Blue half on top, Red half on bottom -->
+          <div class="card-body card-body-dual">
+            <div class="tda-sub-block tda-rec-sub">
+              <strong>Recommender:</strong> Integrates data models into the tactical decision aids and fielded systems used on ships.
+            </div>
+
+            <div class="tda-sub-block tda-sab-sub">
+              <strong>Saboteur:</strong> Protects submarine software architecture; can kill projects through unresponsiveness or by blocking UIs that increase operator cognitive load.
+            </div>
+          </div>
+
+          <div class="card-footer">
+            <strong>People:</strong> Zach Buckley &amp; Kyle Dedrick - NSWC Carderock (declined interviews); Shannon Boone (integrator)
+          </div>
+        </div>
+
+        <!-- Tier 2 Connectors: TDA <-> Sonar Operators -->
+        <div class="h-connector-group">
+          <!-- Top Arrow: Tools and displays (solid ->) -->
+          <div class="arrow-sub-item">
+            <span class="arrow-text">Tools and displays</span>
+            <svg style="width: 100%; height: 16px; overflow: visible;" viewBox="0 0 70 16">
+              <line x1="0" y1="8" x2="58" y2="8" stroke="#0b2545" stroke-width="2.2" />
+              <polygon points="58,3 70,8 58,13" fill="#0b2545" />
+            </svg>
+          </div>
+          <!-- Bottom Arrow: Operational feedback (dashed <-) -->
+          <div class="arrow-sub-item" style="margin-top: 6px;">
+            <svg style="width: 100%; height: 16px; overflow: visible;" viewBox="0 0 70 16">
+              <line x1="70" y1="8" x2="12" y2="8" stroke="#0b2545" stroke-width="2" stroke-dasharray="3.5,2.5" />
+              <polygon points="12,3 0,8 12,13" fill="#0b2545" />
+            </svg>
+            <span class="arrow-text">Operational feedback</span>
+          </div>
+        </div>
+
+        <!-- Card: Sonar Operators (End User) -->
+        <div class="card card-end-user">
+          <div>
+            <div class="card-top">
+              <div class="card-icon" style="background: rgba(67, 160, 71, 0.15);">
+                <!-- Submarine SVG -->
+                <svg viewBox="0 0 24 24">
+                  <path d="M19 12c.55 0 1-.45 1-1V9c0-.55-.45-1-1-1s-1 .45-1 1v1h-3V7c0-.55-.45-1-1-1h-2V4h-2v2H8c-.55 0-1 .45-1 1v3H4C2.34 10 1 11.34 1 13c0 2.21 2.69 4 6 4h10c3.31 0 6-1.79 6-4 0-1.66-1.34-3-3-3h-1v2h-1v-2h1zm-10 3c-.83 0-1.5-.67-1.5-1.5S8.17 12 9 12s1.5.67 1.5 1.5S9.83 15 9 15zm4 0c-.83 0-1.5-.67-1.5-1.5S12.17 12 13 12s1.5.67 1.5 1.5S13.83 15 13 15z"/>
+                </svg>
+              </div>
+              <div class="card-header-text">
+                <div class="card-title">Sonar Operators</div>
+                <div class="card-role">End User</div>
+              </div>
+            </div>
+            <div class="card-body">
+              <ul>
+                <li>Analyze environmental data to detect threats, but currently trust models only about 25% of the time.</li>
+                <li>Want simple, supporting metrics and visualizations to make tactical decisions without information overload.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="card-footer">
+            <strong>People:</strong> Shae Zaben, Shannon Boone (ex-Sonar Operator)
+          </div>
+        </div>
+
+        <!-- Tier 2 Connectors: Sonar <-> Decision Maker -->
+        <div class="h-connector-group">
+          <!-- Top Arrow: Operational needs and feedback (solid ->) -->
+          <div class="arrow-sub-item">
+            <span class="arrow-text">Operational needs</span>
+            <svg style="width: 100%; height: 16px; overflow: visible;" viewBox="0 0 70 16">
+              <line x1="0" y1="8" x2="58" y2="8" stroke="#0b2545" stroke-width="2.2" />
+              <polygon points="58,3 70,8 58,13" fill="#0b2545" />
+            </svg>
+          </div>
+          <!-- Bottom Arrow: Guidance and priorities (solid <-) -->
+          <div class="arrow-sub-item" style="margin-top: 6px;">
+            <svg style="width: 100%; height: 16px; overflow: visible;" viewBox="0 0 70 16">
+              <line x1="70" y1="8" x2="12" y2="8" stroke="#0b2545" stroke-width="2.2" />
+              <polygon points="12,3 0,8 12,13" fill="#0b2545" />
+            </svg>
+            <span class="arrow-text">Guidance &amp; priorities</span>
+          </div>
+        </div>
+
+        <!-- Card: Decision Maker (PEO IWS 5 & Leadership) -->
+        <div class="card card-decision">
+          <div>
+            <div class="card-top">
+              <div class="card-icon" style="background: rgba(251, 192, 45, 0.2);">
+                <!-- People Group SVG -->
+                <svg viewBox="0 0 24 24">
+                  <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+                </svg>
+              </div>
+              <div class="card-header-text">
+                <div class="card-title">PEO IWS 5 & Navy Leadership</div>
+                <div class="card-role">Decision Maker</div>
+              </div>
+            </div>
+            <div class="card-body">
+              <ul>
+                <li>Assess operational risks and set long-term strategic technology requirements.</li>
+                <li>Serve as the ultimate authority deciding which tactical decision aids are officially adopted and owned by the fleet.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="card-footer">
+            <strong>People:</strong> Sean McGuckin (PEO IWS 5), Jason McKenna (strategic tech direction)
+          </div>
+        </div>
+
+        <!-- Row 2: Middle Advocacy Row (Direct A-to-B Connections) -->
+        <div class="middle-advocacy-row" style="grid-column: 2 / span 4; position: relative; height: 54px; margin: 0;">
+          <svg style="width: 100%; height: 54px; display: block; overflow: visible;" viewBox="0 0 1000 54">
+            <!-- 1. Sonar Operators -> Gilchrest (User Demand / Ground Truth) -->
+            <!-- Straight vertical line in Col 3 from y=0 (bottom of Sonar) to y=54 (top of Gilchrest) -->
+            <line x1="250" y1="0" x2="250" y2="44" stroke="#2e7d32" stroke-width="2.5" />
+            <polygon points="243,42 250,54 257,42" fill="#2e7d32" />
+            <rect x="150" y="15" width="200" height="24" rx="12" fill="#e8f5e9" stroke="#43a047" stroke-width="1.5" />
+            <text x="250" y="31" text-anchor="middle" font-size="10.5" font-weight="800" fill="#1b5e20" letter-spacing="0.2">User Demand / Ground Truth</text>
+
+            <!-- 2. Gilchrest -> PEO IWS 5 (Champion Endorsement) -->
+            <!-- Stepped path from Gilchrest (Col 3, x=440, y=54) to PEO IWS 5 (Col 5, x=700, y=0) -->
+            <path d="M 440 54 L 465 27 L 675 27 L 700 10" fill="none" stroke="#d81b60" stroke-width="2.5" />
+            <polygon points="693,12 700,0 707,12" fill="#c2185b" />
+            <rect x="485" y="15" width="170" height="24" rx="12" fill="#fce4ec" stroke="#ec407a" stroke-width="1.5" />
+            <text x="570" y="31" text-anchor="middle" font-size="10.5" font-weight="800" fill="#880e4f" letter-spacing="0.2">Champion Endorsement</text>
+          </svg>
+        </div>
+
+        <!-- Tier 3 Row: -->
+        <!-- Col 2: Spacer -->
+        <div></div>
+
+        <!-- Col 3: Card: M. Gilchrest (Champion) -->
+        <div class="card card-champion">
+          <div>
+            <div class="card-top">
+              <div class="card-icon" style="background: rgba(236, 64, 122, 0.15);">
+                <!-- 3 silhouettes SVG -->
+                <svg viewBox="0 0 24 24" style="fill: #c2185b;">
+                  <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+                </svg>
+              </div>
+              <div class="card-header-text">
+                <div class="card-title">Matthew Gilchrest</div>
+                <div class="card-role">Champion</div>
+              </div>
+            </div>
+            <div class="card-body">
+              <ul>
+                <li>Advocates for the solution and bridges the gap between R&D and the fleet.</li>
+                <li>Wantsan operator-validated UI that merges environmental uncertainty into a single detection-range view.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="card-footer">
+            <strong>People:</strong> M. Gilchrest
+          </div>
+        </div>
+
+        <!-- Col 4: Transition Pathway (Champion -> Economic Buyer) -->
+        <div class="h-connector-group">
+          <span class="arrow-text" style="color: #0b2545; font-weight: 800; font-size: 0.74rem;">Transition Pathway</span>
+          <svg style="width: 100%; height: 20px; overflow: visible;" viewBox="0 0 70 20">
+            <line x1="0" y1="10" x2="58" y2="10" stroke="#0b2545" stroke-width="2.5" />
+            <polygon points="58,5 70,10 58,15" fill="#0b2545" />
+          </svg>
+          
+        </div>
+
+        <!-- Col 5: Card: Economic Buyer (Systems Engineering & Acquisition - NUWC) -->
+        <div class="card card-buyer">
+          <div>
+            <div class="card-top">
+              <div class="card-icon" style="background: rgba(142, 36, 170, 0.15);">
+                <!-- Gear SVG -->
+                <svg viewBox="0 0 24 24" style="fill: #7b1fa2;">
+                  <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84c-.24 0-.45.17-.48.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.23-.09-.49 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.23.09.49 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+                </svg>
+              </div>
+              <div class="card-header-text">
+                <div class="card-title">Systems Engineering & Acquisition</div>
+                <div class="card-role">Economic Buyer</div>
+              </div>
+            </div>
+            <div class="card-body">
+              <ul>
+                <li>Manage prototyping budgets and buy systems from industry partners.</li>
+                <li>Require concrete, operator-validated demand to justify transitioning R&D prototypes into fielded operational capabilities.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="card-footer">
+            <strong>People:</strong> Dr. Jason Gomez (CTO, NUWC), Dr. Joy Lapseritis (Dir. Transition)
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </div>
+</div>
+
+</body>
+</html>
+
