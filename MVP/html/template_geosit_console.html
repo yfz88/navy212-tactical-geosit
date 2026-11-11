@@ -1,0 +1,2045 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sonar Detection &amp; Acoustic Uncertainty Console</title>
+<style>
+  :root {
+    --bg-dark: #070a0f;
+    --panel-bg: #0c121b;
+    --panel-card: #101824;
+    --panel-border: #1e293b;
+    --cyan: #14d9d9;
+    --green: #14D199;
+    --yellow: #FAD91F;
+    --red: #F23333;
+    --text-white: #ffffff;
+    --text-muted: #94a3b8;
+    --text-dim: #64748b;
+    --btn-active: #0f766e;
+    --btn-border: #14b8a6;
+  }
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  body {
+    background-color: var(--bg-dark);
+    color: var(--text-white);
+    font-family: ui-monospace, SFMono-Regular, "Consolas", "Liberation Mono", Menlo, monospace;
+    font-size: 13px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: auto;
+  }
+  header {
+    background: linear-gradient(180deg, #0f172a 0%, #090e17 100%);
+    border-bottom: 1px solid var(--panel-border);
+    padding: 10px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: var(--green);
+    box-shadow: 0 0 10px var(--green);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(0.9); }
+  }
+  .title-group h1 {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    color: #f1f5f9;
+  }
+  .title-group p {
+    font-size: 11px;
+    color: var(--text-muted);
+    letter-spacing: 0.4px;
+  }
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .hud-badge {
+    background: rgba(30, 41, 59, 0.7);
+    border: 1px solid #334155;
+    padding: 5px 12px;
+    border-radius: 4px;
+    font-size: 11px;
+    color: var(--cyan);
+    letter-spacing: 0.5px;
+  }
+  .btn-action {
+    background: #1e293b;
+    color: #e2e8f0;
+    border: 1px solid #475569;
+    padding: 6px 14px;
+    font-size: 11px;
+    font-family: inherit;
+    font-weight: 600;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .btn-action:hover {
+    background: #334155;
+    border-color: var(--cyan);
+    color: #ffffff;
+  }
+
+  main {
+    flex: 1;
+    display: flex;
+    padding: 12px 18px;
+    gap: 16px;
+    max-width: 1360px;
+    margin: 0 auto;
+    width: 100%;
+    align-items: flex-start;
+  }
+
+  /* LEFT RADAR PPI COLUMN - BALANCED 500px */
+  .radar-column {
+    flex: 0 0 500px;
+    width: 500px;
+    max-width: 500px;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    overflow: hidden;
+  }
+  .radar-container {
+    position: relative;
+    width: 100%;
+    max-width: 480px;
+    aspect-ratio: 680 / 744;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #radarCanvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+
+  /* MINIMAL NON-OBSTRUCTING RADAR CORNER TAGS */
+  .hud-tag-tl {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    background: rgba(8, 14, 22, 0.85);
+    border: 1px solid #334155;
+    border-radius: 4px;
+    padding: 3px 7px;
+    font-size: 9px;
+    font-weight: 700;
+    color: #5eead4;
+    letter-spacing: 0.4px;
+  }
+  .hud-overlay-topright-pin {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid #475569;
+    border-radius: 4px;
+    padding: 3px 7px;
+    font-size: 9px;
+    color: var(--text-muted);
+    pointer-events: none;
+    transition: all 0.2s ease;
+  }
+  .hud-overlay-topright-pin.pinned {
+    border-color: var(--yellow);
+    color: var(--yellow);
+    background: rgba(40, 30, 10, 0.9);
+  }
+
+  /* OCEAN ENVIRONMENT & PLATFORM TELEMETRY CARD */
+  .ocean-meta-card {
+    width: 100%;
+    background: #0a1019;
+    border: 1px solid #263449;
+    border-radius: 5px;
+    padding: 9px 11px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 12px;
+  }
+  .meta-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .meta-k {
+    font-size: 9.5px;
+    color: #7dd3fc;
+    font-weight: 700;
+    letter-spacing: 0.45px;
+  }
+  .meta-v {
+    font-size: 11.5px;
+    color: #f1f5f9;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .sensor-header-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid #334155;
+    padding: 3px 6px 3px 9px;
+    border-radius: 5px;
+  }
+  .sensor-header-lbl {
+    font-size: 10px;
+    font-weight: 700;
+    color: #7dd3fc;
+    letter-spacing: 0.45px;
+    white-space: nowrap;
+  }
+  .sensor-switch-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .sensor-btn {
+    background: #111a28;
+    border: 1px solid #334155;
+    color: #94a3b8;
+    padding: 4px 10px;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.12s ease;
+    text-align: center;
+    white-space: nowrap;
+  }
+  .sensor-btn:hover {
+    background: #1e293b;
+    border-color: #64748b;
+    color: #e2e8f0;
+  }
+  .sensor-btn.active {
+    background: #0e7490;
+    border-color: #38bdf8;
+    color: #ffffff;
+    font-weight: 700;
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.25);
+  }
+  .badge-sep {
+    color: #475569;
+    margin: 0 4px;
+  }
+
+  /* GLOSSARY MODAL */
+  .glossary-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 960;
+    background: rgba(4, 7, 12, 0.78);
+    backdrop-filter: blur(2px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .glossary-backdrop.open {
+    display: flex;
+  }
+  .glossary-modal {
+    width: 100%;
+    max-width: 780px;
+    max-height: 86vh;
+    background: #0c131f;
+    border: 1px solid #334e68;
+    border-radius: 8px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.85);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .glossary-header {
+    padding: 12px 16px;
+    background: #101929;
+    border-bottom: 1px solid #1e293b;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+  .glossary-header h2 {
+    font-size: 13.5px;
+    color: var(--cyan);
+    letter-spacing: 0.5px;
+  }
+  .glossary-close {
+    background: #1e293b;
+    border: 1px solid #475569;
+    color: #e2e8f0;
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-family: inherit;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .glossary-close:hover {
+    border-color: var(--cyan);
+    color: #ffffff;
+  }
+  .glossary-body {
+    padding: 14px 16px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .glossary-eq {
+    background: #070b12;
+    border: 1px solid #1e293b;
+    border-left: 3px solid var(--green);
+    border-radius: 4px;
+    padding: 9px 12px;
+    font-size: 11px;
+    color: #cbd5e1;
+    line-height: 1.5;
+  }
+  .glossary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(225px, 1fr));
+    gap: 10px;
+  }
+  .glossary-item {
+    background: #09101a;
+    border: 1px solid #1e293b;
+    border-radius: 5px;
+    padding: 9px 10px;
+  }
+  .glossary-item-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 6px;
+    margin-bottom: 3px;
+  }
+  .glossary-item-code {
+    font-weight: 700;
+    color: var(--cyan);
+    font-size: 12px;
+  }
+  .glossary-item-val {
+    font-size: 10px;
+    color: #99f6e4;
+  }
+  .glossary-item-name {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: #f1f5f9;
+    margin-bottom: 3px;
+  }
+  .glossary-item-desc {
+    font-size: 10px;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+  @media (max-width: 1040px) {
+    main {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .radar-column {
+      flex: none;
+      width: 100%;
+      max-width: 560px;
+      margin: 0 auto;
+    }
+    .analysis-column {
+      min-width: 0;
+    }
+  }
+
+  /* RIGHT ANALYSIS COLUMN */
+  .analysis-column {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 480px;
+  }
+  .chart-card {
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    padding: 10px 14px 12px 14px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+  .chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .chart-title {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #e2e8f0;
+    letter-spacing: 0.4px;
+  }
+  .chart-subtitle {
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+  .chart-canvas-wrapper {
+    position: relative;
+    width: 100%;
+    height: 140px;
+  }
+  .chart-canvas-wrapper canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+
+  /* TARGET DEPTH SLIDER + PRESET SELECTOR */
+  .depth-panel {
+    background: var(--panel-bg);
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .depth-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+  .depth-label {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: #7dd3fc;
+    letter-spacing: 0.5px;
+  }
+  .depth-header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .depth-range-pill {
+    font-size: 10.5px;
+    color: #cbd5e1;
+    background: #0f172a;
+    border: 1px solid #334155;
+    padding: 2px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+  .depth-readout {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--cyan);
+    background: rgba(20, 217, 217, 0.12);
+    border: 1px solid rgba(20, 217, 217, 0.45);
+    padding: 2px 9px;
+    border-radius: 4px;
+    min-width: 74px;
+    text-align: center;
+  }
+  .depth-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .depth-bound {
+    font-size: 10px;
+    color: var(--text-muted);
+    min-width: 48px;
+    text-align: center;
+    white-space: nowrap;
+  }
+  .depth-slider {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 6px;
+    background: linear-gradient(90deg, #0f766e 0%, #1e293b 100%);
+    border: 1px solid #334155;
+    border-radius: 999px;
+    outline: none;
+    cursor: pointer;
+  }
+  .depth-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--cyan);
+    border: 2px solid #042f2e;
+    box-shadow: 0 0 8px rgba(20, 217, 217, 0.7);
+    cursor: pointer;
+    transition: transform 0.1s ease;
+  }
+  .depth-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+  }
+  .depth-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--cyan);
+    border: 2px solid #042f2e;
+    box-shadow: 0 0 8px rgba(20, 217, 217, 0.7);
+    cursor: pointer;
+  }
+  .depth-button-row {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+  }
+  .depth-btn {
+    flex: 1;
+    background: #111a28;
+    border: 1px solid #334155;
+    color: #94a3b8;
+    padding: 6px 4px;
+    font-family: inherit;
+    font-size: 11.5px;
+    font-weight: 500;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.12s ease;
+    text-align: center;
+  }
+  .depth-btn:hover {
+    background: #1e293b;
+    border-color: #64748b;
+    color: #e2e8f0;
+  }
+  .depth-btn.active {
+    background: #0f766e;
+    border-color: #2dd4bf;
+    color: #ffffff;
+    font-weight: 700;
+    box-shadow: 0 0 10px rgba(45, 212, 191, 0.25);
+  }
+
+  /* TACTICAL INSPECTOR BOX */
+  .inspector-card {
+    background: rgba(8, 14, 22, 0.95);
+    border: 2px solid var(--green);
+    border-radius: 6px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    font-size: 11.5px;
+    line-height: 1.45;
+    color: #ffffff;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+    transition: border-color 0.2s ease;
+  }
+  .inspector-line {
+    font-weight: normal;
+  }
+  .stat-badge {
+    font-weight: normal;
+  }
+  .hotkey-legend {
+    font-size: 10px;
+    color: var(--text-dim);
+    text-align: center;
+    margin-top: 4px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <div class="status-dot"></div>
+    <div class="title-group">
+      <h1>SONAR DETECTION &amp; ACOUSTIC UNCERTAINTY CONSOLE</h1>
+      <p id="headerSubtitle">NORTH ATLANTIC OCEAN &bull; 3.0 kHz SONAR &bull; 20-RUN MONTE CARLO ENSEMBLE</p>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="sensor-header-group" id="sensorSwitchWrap" style="display:none;" title="Switch fixed ownship sonar depth">
+      <span class="sensor-header-lbl">SONAR DEPTH:</span>
+      <div class="sensor-switch-row" id="sensorSwitchRow"></div>
+    </div>
+    <div class="hud-badge" id="sonarBudgetBadge">
+      FOM: <strong id="fomBadgeVal">104 dB</strong>
+      <span class="badge-sep">|</span>
+      SL <span id="slBadgeVal">150</span> +
+      DI <span id="diBadgeVal">20</span> &minus;
+      (NL <span id="nlBadgeVal">60</span> +
+      DT <span id="dtBadgeVal">6</span>)
+    </div>
+    <button class="btn-action" id="btnGlossary" title="Explain sonar equation constants and terms">? Terms</button>
+    <button class="btn-action" id="btnLockToggle" title="Lock current range pin (or press Space)">Lock Pin</button>
+  </div>
+</header>
+
+<main>
+  <!-- LEFT COLUMN: SONAR PPI RADAR + OCEAN TELEMETRY -->
+  <div class="radar-column">
+    <div class="radar-container" id="radarWrapper">
+      <canvas id="radarCanvas"></canvas>
+
+      <!-- Minimal Non-Obstructing Corner Tags -->
+      <div class="hud-tag-tl">PPI SCOPE</div>
+      <div class="hud-overlay-topright-pin" id="pinStatusBadge">
+        [LIVE HOVER MODE]
+      </div>
+    </div>
+
+    <!-- OCEAN ENVIRONMENT, BATHYMETRY & PLATFORM CARD -->
+    <div class="ocean-meta-card">
+      <div class="meta-cell">
+        <div class="meta-k">OCEAN LOCATION</div>
+        <div class="meta-v" id="metaLocation">North Atlantic Ocean</div>
+      </div>
+      <div class="meta-cell">
+        <div class="meta-k">OCEAN DEPTH (SEAFLOOR)</div>
+        <div class="meta-v" id="metaOceanDepth">7,418 &ndash; 9,885 ft</div>
+      </div>
+      <div class="meta-cell">
+        <div class="meta-k">CURRENT DEPTH (SENSOR)</div>
+        <div class="meta-v" id="metaReceiverDepth">66 ft (Fixed)</div>
+      </div>
+      <div class="meta-cell">
+        <div class="meta-k">THERMOCLINE DEPTH</div>
+        <div class="meta-v" id="metaThermocline">144 ft (44 m)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT COLUMN: 1D HORIZON & DETECTIONS & CONTROLS -->
+  <div class="analysis-column">
+    
+    <!-- 1D TRANSMISSION LOSS CARD -->
+    <div class="chart-card">
+      <div class="chart-header">
+        <div class="chart-title" id="tlChartTitle">ACOUSTIC TL &mdash; TRANSMISSION LOSS (<span id="tlDepthSpan">331 ft</span> TARGET)</div>
+        <div class="chart-subtitle">20-Run Monte Carlo Spread (&Delta;TL)</div>
+      </div>
+      <div class="chart-canvas-wrapper">
+        <canvas id="tlCanvas"></canvas>
+      </div>
+    </div>
+
+    <!-- PROBABILITY OF DETECTION CARD -->
+    <div class="chart-card">
+      <div class="chart-header">
+        <div class="chart-title" id="pdChartTitle">PROBABILITY OF DETECTION P_d(r) (<span id="pdDepthSpan">331 ft</span> TARGET)</div>
+        <div class="chart-subtitle">Fraction with TL &le; FOM</div>
+      </div>
+      <div class="chart-canvas-wrapper">
+        <canvas id="pdCanvas"></canvas>
+      </div>
+    </div>
+
+    <!-- TARGET DEPTH SLIDER & PRESET BUTTONS -->
+    <div class="depth-panel">
+      <div class="depth-header-row">
+        <div class="depth-label" id="depthPanelLabel">TARGET DEPTH (33 ft &ndash; 3,306 ft):</div>
+        <div class="depth-header-right">
+          <div class="depth-range-pill" id="depthMaxRangePill">Max Range: 22.6 kyd (&plusmn;0.1)</div>
+          <div class="depth-readout" id="depthReadout">331 ft</div>
+        </div>
+      </div>
+      <div class="depth-slider-row">
+        <span class="depth-bound" id="depthMinLbl">33 ft</span>
+        <input type="range" id="depthSlider" class="depth-slider" min="0" max="99" step="1" value="9" aria-label="Target Depth">
+        <span class="depth-bound" id="depthMaxLbl">3,306 ft</span>
+      </div>
+      <div class="depth-button-row" id="depthButtonRow"></div>
+    </div>
+
+    <!-- LIVE CURSOR / PIN INSPECTOR BOX -->
+    <div class="inspector-card" id="inspectorBox">
+      <div class="inspector-line" id="inspLine1">[CURSOR: 22.6 kyd] &nbsp;|&nbsp; P_d = 50% (+0.0 dB vs FOM) &nbsp;|&nbsp; Seafloor: 9,180 ft</div>
+      <div class="inspector-line" id="inspLine2">RELIABILITY : <span class="stat-badge" id="inspStatus">HIGH CONFIDENCE (GREEN)</span> &nbsp;|&nbsp; Acoustic Spread: &Delta;TL = 3.8 dB (&plusmn;1.9 dB)</div>
+      <div class="inspector-line" id="inspLine3">OCEAN CAUSE : Range Boundary: Max detection range (~22.6 kyd)</div>
+    </div>
+
+    <div class="hotkey-legend">
+      Click/Space: Lock Pin &bull; [1-5] Quick Depth &bull; [&uarr;/&darr;] Step Target Depth &bull; [&larr;/&rarr;] Nudge &plusmn;0.2 kyd &bull; [? Terms] Sonar Definitions
+    </div>
+
+  </div>
+</main>
+
+<!-- SONAR EQUATION TERMS MODAL -->
+<div class="glossary-backdrop" id="glossaryBackdrop" aria-hidden="true">
+  <div class="glossary-modal" role="dialog" aria-modal="true" aria-labelledby="glossaryTitle">
+    <div class="glossary-header">
+      <h2 id="glossaryTitle">SONAR EQUATION CONSTANTS &amp; TERMS</h2>
+      <button class="glossary-close" id="btnCloseGlossary" type="button">Close [Esc]</button>
+    </div>
+    <div class="glossary-body">
+      <div class="glossary-eq" id="glossaryEquation"></div>
+      <div class="glossary-grid" id="glossaryGrid"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// SIMULATION DATA INJECTED AUTOMATICALLY (supports single scenario or {cases: [...]} comparison)
+const RAW_SIM_DATA = %SIM_DATA_JSON%;
+const SCENARIO_LIST = (RAW_SIM_DATA && Array.isArray(RAW_SIM_DATA.cases) && RAW_SIM_DATA.cases.length)
+  ? RAW_SIM_DATA.cases
+  : [RAW_SIM_DATA];
+let activeScenarioIdx = (RAW_SIM_DATA && typeof RAW_SIM_DATA.default_case_index === 'number' &&
+    RAW_SIM_DATA.default_case_index >= 0 &&
+    RAW_SIM_DATA.default_case_index < SCENARIO_LIST.length)
+  ? RAW_SIM_DATA.default_case_index
+  : 0;
+let SIM_DATA = SCENARIO_LIST[activeScenarioIdx];
+
+// UNIT CONVERSION: METRIC SIMULATION DATA -> US NAVY DISPLAY UNITS (kyd, exact ft)
+const KM_TO_KYD = 1.0936133;
+const M_TO_FT = 3.28084;
+const RANGE_TICKS_KYD = [10, 20, 30, 40];
+
+function formatDepthFt(depthMeters) {
+  return `${Math.round(depthMeters * M_TO_FT).toLocaleString('en-US')} ft`;
+}
+
+// NORMALIZE ALL EMBEDDED SCENARIOS ONCE
+SCENARIO_LIST.forEach((sc, idx) => {
+  const dList = Array.isArray(sc.depths)
+    ? sc.depths
+    : Object.values(sc.depths).sort((a, b) => a.depth - b.depth);
+  dList.forEach(d => {
+    d.R_nom_kyd = d.R_nom * KM_TO_KYD;
+    d.spread_kyd = d.spread_km * KM_TO_KYD;
+  });
+  sc._depths = dList;
+  sc._r_kyd = sc.r_km.map(r => r * KM_TO_KYD);
+  sc._r_fine_kyd = sc.r_fine.map(r => r * KM_TO_KYD);
+  const rxM = (typeof sc.receiver_depth_m === 'number')
+    ? sc.receiver_depth_m
+    : ((typeof sc.ownship_depth_m === 'number') ? sc.ownship_depth_m : 20.0);
+  sc._rx_m = rxM;
+  sc._rx_ft = formatDepthFt(rxM);
+  sc._label = sc.case_label || `${sc._rx_ft} (${Math.round(rxM)} m)`;
+});
+
+// ACTIVE SCENARIO STATE (MUTABLE FOR SENSOR-DEPTH SWITCHING)
+let RANGE_KYD = [];
+let RANGE_FINE_KYD = [];
+let MAX_RANGE_KYD = 43.7;
+let DEPTH_LIST = [];
+let RECEIVER_DEPTH_M = 20.0;
+let RECEIVER_DEPTH_FT = '66 ft';
+let ENV_PROFILE = 'NORTH ATLANTIC OCEAN';
+let OCEAN_LOCATION = 'North Atlantic Ocean';
+let OCEAN_DEPTH_MIN_M = 2261.0;
+let OCEAN_DEPTH_MAX_M = 3013.0;
+let OCEAN_DEPTH_MEAN_M = 2726.6;
+let THERMOCLINE_M = 43.9;
+let SSP_SURF_SPEED = 1513.0;
+let BATHY_FINE_M = [];
+let SONAR_SL = 150;
+let SONAR_DI = 20;
+let SONAR_NL = 60;
+let SONAR_DT = 6;
+let SONAR_FOM = 104;
+let SONAR_FREQ_KHZ = '3.0';
+let PRESET_INDICES = [];
+let DEFAULT_INDEX = 0;
+let COLOR_SCALE = {};
+let TH_FLAT = 3.7;
+let TH_YEL = 6.5;
+let TUKEY_HI = 10.7;
+let MAX_SPREAD = 16.0;
+
+// INTERACTIVE STATE VARIABLES
+let activeDepthIdx = 0;
+let hoveredRange = 0;
+let hoveredTheta = Math.PI / 4;
+let isPinned = false;
+let pinnedRange = null;
+let pinnedTheta = Math.PI / 4;
+
+// LAZY DECODER FOR PACKED 0.1-dB UINT16 MONTE CARLO CURVES
+function getMcCurves(d) {
+  if (d.mc_curves) return d.mc_curves;
+  if (!d.mc_b64) return [];
+  const bin = atob(d.mc_b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const u16 = new Uint16Array(bytes.buffer);
+  const nr = RANGE_KYD.length;
+  const nMc = Math.floor(u16.length / nr);
+  const curves = new Array(nMc);
+  for (let m = 0; m < nMc; m++) {
+    const row = new Float32Array(nr);
+    const base = m * nr;
+    for (let k = 0; k < nr; k++) row[k] = u16[base + k] * 0.1;
+    curves[m] = row;
+  }
+  d.mc_curves = curves;
+  return curves;
+}
+
+const COLOR_GREEN = "#14D199";
+const COLOR_YELLOW = "#FAD91F";
+const COLOR_RED = "#F23333";
+
+function getSpreadColor(val) {
+  if (val <= TH_FLAT) {
+    return [20, 209, 153]; // Solid Cyany Green (#14D199)
+  } else if (val <= TH_YEL) {
+    const denom = Math.max(1e-6, TH_YEL - TH_FLAT);
+    const t = (val - TH_FLAT) / denom;
+    return [
+      Math.round((1 - t) * 20 + t * 250),
+      Math.round((1 - t) * 209 + t * 217),
+      Math.round((1 - t) * 153 + t * 31)
+    ];
+  } else {
+    const denom = Math.max(1e-6, MAX_SPREAD - TH_YEL);
+    const t = Math.min(1.0, Math.max(0.0, (val - TH_YEL) / denom));
+    return [
+      Math.round((1 - t) * 250 + t * 242),
+      Math.round((1 - t) * 217 + t * 51),
+      Math.round((1 - t) * 31 + t * 51)
+    ];
+  }
+}
+
+function getSpreadColorCss(val) {
+  const c = getSpreadColor(val);
+  return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+}
+
+// LINEAR INTERPOLATION HELPER
+function interp(xArr, yArr, x) {
+  if (x <= xArr[0]) return yArr[0];
+  if (x >= xArr[xArr.length - 1]) return yArr[yArr.length - 1];
+  let low = 0, high = xArr.length - 1;
+  while (low <= high) {
+    let mid = (low + high) >> 1;
+    if (xArr[mid] < x) low = mid + 1;
+    else high = mid - 1;
+  }
+  let i0 = Math.max(0, low - 1);
+  let i1 = Math.min(xArr.length - 1, low);
+  if (i0 === i1) return yArr[i0];
+  let t = (x - xArr[i0]) / (xArr[i1] - xArr[i0]);
+  return yArr[i0] + t * (yArr[i1] - yArr[i0]);
+}
+
+// SETUP CANVASES WITH RETINA RESOLUTION (RESIZE-ONLY REALLOCATION)
+function setupCanvas(canvas) {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const targetW = Math.round(rect.width * dpr);
+  const targetH = Math.round(rect.height * dpr);
+  if (canvas.width !== targetW || canvas.height !== targetH) {
+    canvas.width = targetW;
+    canvas.height = targetH;
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, width: rect.width, height: rect.height };
+}
+
+// RADAR PPI REUSABLE OFFSCREEN LAYERS (CONSTANT MEMORY ACROSS 100 SLIDER DEPTHS)
+const RADAR_W = 680;
+const RADAR_H = 744;
+const RADAR_CX = RADAR_W / 2;
+const RADAR_CY = 318;
+const RADAR_R_PX_MAX = 268;
+let RADAR_SCALE = RADAR_R_PX_MAX / 43.7;
+const RADAR_CB_BOX_X = 24;
+const RADAR_CB_BOX_Y = 634;
+const RADAR_CB_BOX_W = RADAR_W - 48;
+const RADAR_CB_BOX_H = 100;
+const RADAR_CB_X = 48;
+const RADAR_CB_Y = 668;
+const RADAR_CB_W = RADAR_W - 96;
+const RADAR_CB_H = 22;
+
+let radarOverlayCanvas = null;
+let radarFieldCanvas = null;
+let lastFieldDepthIdx = -1;
+
+function applyScenario(idx, preserveTargetDepth = true) {
+  const prevTargetM = (preserveTargetDepth && DEPTH_LIST.length && DEPTH_LIST[activeDepthIdx])
+    ? DEPTH_LIST[activeDepthIdx].depth
+    : null;
+
+  activeScenarioIdx = Math.max(0, Math.min(SCENARIO_LIST.length - 1, idx));
+  SIM_DATA = SCENARIO_LIST[activeScenarioIdx];
+
+  RANGE_KYD = SIM_DATA._r_kyd;
+  RANGE_FINE_KYD = SIM_DATA._r_fine_kyd;
+  MAX_RANGE_KYD = RANGE_KYD[RANGE_KYD.length - 1];
+  RADAR_SCALE = RADAR_R_PX_MAX / MAX_RANGE_KYD;
+  DEPTH_LIST = SIM_DATA._depths;
+
+  RECEIVER_DEPTH_M = SIM_DATA._rx_m;
+  RECEIVER_DEPTH_FT = SIM_DATA._rx_ft;
+  ENV_PROFILE = SIM_DATA.env_profile || 'NORTH ATLANTIC OCEAN';
+  OCEAN_LOCATION = SIM_DATA.ocean_location || 'North Atlantic Ocean';
+  OCEAN_DEPTH_MIN_M = (typeof SIM_DATA.ocean_depth_min_m === 'number') ? SIM_DATA.ocean_depth_min_m : 2261.0;
+  OCEAN_DEPTH_MAX_M = (typeof SIM_DATA.ocean_depth_max_m === 'number') ? SIM_DATA.ocean_depth_max_m : 3013.0;
+  OCEAN_DEPTH_MEAN_M = (typeof SIM_DATA.ocean_depth_mean_m === 'number') ? SIM_DATA.ocean_depth_mean_m : 2726.6;
+  THERMOCLINE_M = (typeof SIM_DATA.thermocline_depth_m === 'number') ? SIM_DATA.thermocline_depth_m : 43.9;
+  SSP_SURF_SPEED = (typeof SIM_DATA.ssp_surface_speed_ms === 'number') ? SIM_DATA.ssp_surface_speed_ms : 1513.0;
+  BATHY_FINE_M = (Array.isArray(SIM_DATA.bathy_fine) && SIM_DATA.bathy_fine.length)
+    ? SIM_DATA.bathy_fine
+    : RANGE_FINE_KYD.map(() => OCEAN_DEPTH_MEAN_M);
+  SONAR_SL = (typeof SIM_DATA.SL === 'number') ? SIM_DATA.SL : 150;
+  SONAR_DI = (typeof SIM_DATA.DI === 'number') ? SIM_DATA.DI : 20;
+  SONAR_NL = (typeof SIM_DATA.NL === 'number') ? SIM_DATA.NL : 60;
+  SONAR_DT = (typeof SIM_DATA.DT === 'number') ? SIM_DATA.DT : 6;
+  SONAR_FOM = (typeof SIM_DATA.FOM === 'number') ? SIM_DATA.FOM : 104;
+  SONAR_FREQ_KHZ = ((typeof SIM_DATA.freq_hz === 'number' ? SIM_DATA.freq_hz : 3000) / 1000).toFixed(1);
+  PRESET_INDICES = (Array.isArray(SIM_DATA.preset_indices) && SIM_DATA.preset_indices.length)
+    ? SIM_DATA.preset_indices
+    : DEPTH_LIST.map((_, dIdx) => dIdx).slice(0, 5);
+  DEFAULT_INDEX = (typeof SIM_DATA.default_index === 'number' && SIM_DATA.default_index >= 0 && SIM_DATA.default_index < DEPTH_LIST.length)
+    ? SIM_DATA.default_index
+    : (PRESET_INDICES[1] !== undefined ? PRESET_INDICES[1] : 0);
+
+  COLOR_SCALE = (SIM_DATA && SIM_DATA.color_scale) ? SIM_DATA.color_scale : {};
+  TH_FLAT = (typeof COLOR_SCALE.th_flat === 'number') ? COLOR_SCALE.th_flat : 3.7;
+  TH_YEL = (typeof COLOR_SCALE.th_yel === 'number') ? COLOR_SCALE.th_yel : 6.5;
+  TUKEY_HI = (typeof COLOR_SCALE.tukey_hi === 'number') ? COLOR_SCALE.tukey_hi : 10.7;
+  MAX_SPREAD = (typeof COLOR_SCALE.max_spread === 'number') ? COLOR_SCALE.max_spread : 16.0;
+
+  if (prevTargetM !== null) {
+    let bestIdx = 0;
+    let bestDiff = Infinity;
+    for (let i = 0; i < DEPTH_LIST.length; i++) {
+      const diff = Math.abs(DEPTH_LIST[i].depth - prevTargetM);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        bestIdx = i;
+      }
+    }
+    activeDepthIdx = bestIdx;
+  } else {
+    activeDepthIdx = DEFAULT_INDEX;
+  }
+
+  hoveredRange = Math.max(RANGE_KYD[0], Math.min(MAX_RANGE_KYD,
+    prevTargetM !== null ? hoveredRange : DEPTH_LIST[activeDepthIdx].R_nom_kyd));
+  if (isPinned && pinnedRange !== null) {
+    pinnedRange = Math.max(RANGE_KYD[0], Math.min(MAX_RANGE_KYD, pinnedRange));
+  }
+  radarOverlayCanvas = null;
+  lastFieldDepthIdx = -1;
+}
+
+applyScenario(activeScenarioIdx, false);
+
+function getRadarOverlay() {
+  if (radarOverlayCanvas) return radarOverlayCanvas;
+  const ov = document.createElement('canvas');
+  ov.width = RADAR_W * 2;
+  ov.height = RADAR_H * 2;
+  const ctx = ov.getContext('2d');
+  ctx.scale(2, 2);
+
+  const cx = RADAR_CX;
+  const cy = RADAR_CY;
+  const scale = RADAR_SCALE;
+  const rPixelMax = RADAR_R_PX_MAX;
+
+  // Sparse Range Scale Along East Axis (Tick Marks + Labels Only — No Dark Circles)
+  const rangeMarkers = RANGE_TICKS_KYD;
+  ctx.save();
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.22)";
+  ctx.lineWidth = 1.0;
+  ctx.beginPath();
+  ctx.moveTo(cx + 10, cy);
+  ctx.lineTo(cx + rPixelMax, cy);
+  ctx.stroke();
+
+  rangeMarkers.forEach(rm => {
+    const rPx = rm * scale;
+
+    // Single high-contrast tick mark at each range interval along East
+    ctx.strokeStyle = "rgba(4, 8, 16, 0.88)";
+    ctx.lineWidth = 3.2;
+    ctx.beginPath();
+    ctx.moveTo(cx + rPx, cy - 6);
+    ctx.lineTo(cx + rPx, cy + 6);
+    ctx.stroke();
+
+    ctx.strokeStyle = "#e2e8f0";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(cx + rPx, cy - 5);
+    ctx.lineTo(cx + rPx, cy + 5);
+    ctx.stroke();
+
+    // Distance Label Pill right below tick
+    const pillW = 44;
+    const pillH = 18;
+    const pillX = cx + rPx - pillW / 2;
+    const pillY = cy + 8;
+    ctx.fillStyle = "rgba(4, 8, 16, 0.88)";
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(pillX, pillY, pillW, pillH, 3);
+    } else {
+      ctx.rect(pillX, pillY, pillW, pillH);
+    }
+    ctx.fill();
+    ctx.strokeStyle = "rgba(148, 163, 184, 0.35)";
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+
+    ctx.fillStyle = "#f1f5f9";
+    ctx.font = "bold 12px Consolas, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(`${rm} kyd`, cx + rPx, pillY + pillH / 2 + 0.5);
+  });
+  ctx.restore();
+
+  // Compass Outer Bezel (at max range)
+  ctx.strokeStyle = "#334e68";
+  ctx.lineWidth = 2.0;
+  ctx.beginPath();
+  ctx.arc(cx, cy, rPixelMax, 0, 2 * Math.PI);
+  ctx.stroke();
+
+  // Compass Ticks and Degree Labels (000 deg N to 350 deg)
+  for (let deg = 0; deg < 360; deg += 10) {
+    const rad = deg * Math.PI / 180;
+    const sx = Math.sin(rad);
+    const cy_deg = -Math.cos(rad);
+    const isMajor = (deg % 30 === 0);
+
+    const r0 = rPixelMax;
+    const r1 = rPixelMax + (isMajor ? 7 : 4);
+
+    ctx.strokeStyle = isMajor ? "#38bdf8" : "#1e3a5f";
+    ctx.lineWidth = isMajor ? 1.6 : 1.0;
+    ctx.beginPath();
+    ctx.moveTo(cx + r0 * sx, cy + r0 * cy_deg);
+    ctx.lineTo(cx + r1 * sx, cy + r1 * cy_deg);
+    ctx.stroke();
+
+    if (isMajor) {
+      let lbl = (deg === 0) ? "000° N" : (deg === 90) ? "090° E" : (deg === 180) ? "180° S" : (deg === 270) ? "270° W" : `${String(deg).padStart(3, '0')}°`;
+      const rLbl = rPixelMax + 18;
+      ctx.fillStyle = "#7dd3fc";
+      ctx.font = "bold 9.5px Consolas, monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(lbl, cx + rLbl * sx, cy + rLbl * cy_deg);
+    }
+  }
+
+  // Receiver Center Marker
+  ctx.fillStyle = "#000000";
+  ctx.beginPath();
+  ctx.arc(cx, cy, 4.5, 0, 2 * Math.PI);
+  ctx.fill();
+  ctx.strokeStyle = "#14D199";
+  ctx.lineWidth = 2.0;
+  ctx.stroke();
+
+  // Full-Width Horizontal Colorbar Legend Panel Below Radar Circle
+  ctx.fillStyle = "#0a1019";
+  ctx.strokeStyle = "#263449";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  if (ctx.roundRect) {
+    ctx.roundRect(RADAR_CB_BOX_X, RADAR_CB_BOX_Y, RADAR_CB_BOX_W, RADAR_CB_BOX_H, 6);
+  } else {
+    ctx.rect(RADAR_CB_BOX_X, RADAR_CB_BOX_Y, RADAR_CB_BOX_W, RADAR_CB_BOX_H);
+  }
+  ctx.fill();
+  ctx.stroke();
+
+  const cbX = RADAR_CB_X;
+  const cbY = RADAR_CB_Y;
+  const cbW = RADAR_CB_W;
+  const cbH = RADAR_CB_H;
+
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "bold 13.5px Consolas, monospace";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillText(`SIGNAL SPREAD / FADING (\u0394TL \u00B7 ${RECEIVER_DEPTH_FT} IQR)`, cbX, cbY - 17);
+  if (typeof COLOR_SCALE.median === 'number') {
+    ctx.fillStyle = "#64748b";
+    ctx.font = "11.5px Consolas, monospace";
+    ctx.textAlign = "right";
+    ctx.fillText(`Med ${COLOR_SCALE.median.toFixed(1)} | Whisker ${TUKEY_HI.toFixed(1)} dB`, cbX + cbW, cbY - 17);
+  }
+
+  const grad = ctx.createLinearGradient(cbX, 0, cbX + cbW, 0);
+  grad.addColorStop(0.0, COLOR_GREEN);
+  grad.addColorStop(TH_FLAT / MAX_SPREAD, COLOR_GREEN);
+  grad.addColorStop(TH_YEL / MAX_SPREAD, COLOR_YELLOW);
+  grad.addColorStop(1.0, COLOR_RED);
+
+  ctx.fillStyle = grad;
+  ctx.fillRect(cbX, cbY, cbW, cbH);
+  ctx.strokeStyle = "#475569";
+  ctx.lineWidth = 1.2;
+  ctx.strokeRect(cbX, cbY, cbW, cbH);
+
+  // Deduplicate & space-guard ticks cleanly across arbitrary scenario scales
+  const rawTicks = [0, TH_FLAT, TH_YEL, TUKEY_HI, MAX_SPREAD]
+    .filter(v => Number.isFinite(v) && v >= 0 && v <= MAX_SPREAD)
+    .sort((a, b) => a - b);
+  const cbTicks = [];
+  rawTicks.forEach(v => {
+    const isEnd = (v === 0 || v === MAX_SPREAD);
+    if (cbTicks.length === 0) {
+      cbTicks.push(v);
+    } else {
+      const prev = cbTicks[cbTicks.length - 1];
+      const gapPx = ((v - prev) / MAX_SPREAD) * cbW;
+      if (isEnd || (gapPx >= 36 && ((MAX_SPREAD - v) / MAX_SPREAD) * cbW >= 36)) {
+        cbTicks.push(v);
+      }
+    }
+  });
+  if (cbTicks[cbTicks.length - 1] !== MAX_SPREAD) cbTicks.push(MAX_SPREAD);
+
+  ctx.font = "bold 13px Consolas, monospace";
+  ctx.fillStyle = "#cbd5e1";
+  ctx.textBaseline = "middle";
+  cbTicks.forEach(tickVal => {
+    const frac = tickVal / MAX_SPREAD;
+    const tx = cbX + cbW * frac;
+    ctx.strokeStyle = "#94a3b8";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(tx, cbY + cbH);
+    ctx.lineTo(tx, cbY + cbH + 5);
+    ctx.stroke();
+    ctx.textAlign = (tickVal === 0) ? "left" : (tickVal === MAX_SPREAD) ? "right" : "center";
+    const lbl = (tickVal === MAX_SPREAD) ? `${Number(MAX_SPREAD.toFixed(1))}+ dB` : `${Number(tickVal.toFixed(1))}`;
+    ctx.fillText(lbl, tx, cbY + cbH + 14);
+  });
+
+  // Qualitative Zone Captions (dynamically reflecting active IQR scale)
+  ctx.font = "12.5px Consolas, monospace";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = COLOR_GREEN;
+  ctx.textAlign = "left";
+  ctx.fillText(`Steady (<${TH_FLAT.toFixed(1)})`, cbX, cbY + cbH + 31);
+  const modCenterPx = cbW * ((TH_FLAT + TH_YEL) / (2 * MAX_SPREAD));
+  if (modCenterPx >= 115 && (cbW - modCenterPx) >= 135) {
+    ctx.fillStyle = COLOR_YELLOW;
+    ctx.textAlign = "center";
+    ctx.fillText("Moderate (IQR)", cbX + modCenterPx, cbY + cbH + 31);
+  }
+  ctx.fillStyle = "#f87171";
+  ctx.textAlign = "right";
+  ctx.fillText(`Volatile (>${TH_YEL.toFixed(1)} dB)`, cbX + cbW, cbY + cbH + 31);
+
+  radarOverlayCanvas = ov;
+  return ov;
+}
+
+function getRadarBaseField(depthIdx) {
+  if (!radarFieldCanvas) {
+    radarFieldCanvas = document.createElement('canvas');
+    radarFieldCanvas.width = RADAR_W * 2;
+    radarFieldCanvas.height = RADAR_H * 2;
+    radarFieldCanvas.getContext('2d').scale(2, 2);
+  }
+  if (lastFieldDepthIdx === depthIdx) return radarFieldCanvas;
+
+  const ctx = radarFieldCanvas.getContext('2d');
+  const depthData = DEPTH_LIST[depthIdx];
+
+  ctx.fillStyle = "#06090e";
+  ctx.fillRect(0, 0, RADAR_W, RADAR_H);
+
+  const rFine = RANGE_FINE_KYD;
+  const spreadFine = depthData.spread_fine;
+  const numSteps = rFine.length;
+
+  for (let i = 0; i < numSteps; i++) {
+    const rCurr = rFine[i];
+    const rNext = (i < numSteps - 1) ? rFine[i + 1] : MAX_RANGE_KYD;
+    const pxR0 = rCurr * RADAR_SCALE;
+    const pxR1 = rNext * RADAR_SCALE;
+    const radMid = (pxR0 + pxR1) / 2;
+    ctx.strokeStyle = getSpreadColorCss(spreadFine[i]);
+    ctx.lineWidth = Math.max(1.0, pxR1 - pxR0 + 0.6);
+    ctx.beginPath();
+    ctx.arc(RADAR_CX, RADAR_CY, radMid, 0, 2 * Math.PI);
+    ctx.stroke();
+  }
+
+  ctx.drawImage(getRadarOverlay(), 0, 0, RADAR_W * 2, RADAR_H * 2, 0, 0, RADAR_W, RADAR_H);
+  lastFieldDepthIdx = depthIdx;
+  return radarFieldCanvas;
+}
+
+// DRAW RADAR WITH DYNAMIC HOVER CURSOR
+function drawRadar() {
+  const canvas = document.getElementById('radarCanvas');
+  const { ctx, width, height } = setupCanvas(canvas);
+  const baseCanvas = getRadarBaseField(activeDepthIdx);
+
+  // Draw cached base radar
+  ctx.drawImage(baseCanvas, 0, 0, baseCanvas.width, baseCanvas.height, 0, 0, width, height);
+
+  const currentR = isPinned ? pinnedRange : hoveredRange;
+  const currentTh = isPinned ? pinnedTheta : hoveredTheta;
+  const depthData = DEPTH_LIST[activeDepthIdx];
+  const sx = width / RADAR_W;
+  const sy = height / RADAR_H;
+
+  if (currentR !== null && currentR >= 0 && currentR <= MAX_RANGE_KYD) {
+    const cx = RADAR_CX * sx;
+    const cy = RADAR_CY * sy;
+    const scale = (RADAR_R_PX_MAX * sx) / MAX_RANGE_KYD;
+    const rPx = currentR * scale;
+
+    // Draw Dynamic Hover Ring (Bold Black Ring with white shadow for high visibility)
+    ctx.save();
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+    ctx.lineWidth = 3.6;
+    ctx.beginPath();
+    ctx.arc(cx, cy, rPx, 0, 2 * Math.PI);
+    ctx.stroke();
+
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.arc(cx, cy, rPx, 0, 2 * Math.PI);
+    ctx.stroke();
+    ctx.restore();
+
+    // Floating Range Caption Pill (EdgeColor: none, white bold text)
+    let captionR = (currentR < MAX_RANGE_KYD - 6.5) ? currentR + 2.0 : currentR - 2.0;
+    if (currentR < 4.5) captionR = currentR + 2.4;
+    const capPx = captionR * scale;
+    const capX = cx + capPx * Math.cos(currentTh);
+    const capY = cy + capPx * Math.sin(currentTh);
+
+    const txt = ` ${currentR.toFixed(1)} kyd `;
+    ctx.font = "bold 10px Consolas, monospace";
+    const tw = ctx.measureText(txt).width;
+
+    ctx.fillStyle = "rgba(4, 8, 16, 0.92)";
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(capX - tw / 2 - 4, capY - 9, tw + 8, 18, 3);
+    } else {
+      ctx.rect(capX - tw / 2 - 4, capY - 9, tw + 8, 18);
+    }
+    ctx.fill();
+
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(txt, capX, capY);
+
+    // Horizontal Indicator Needle & Live Readout on Bottom Colorbar
+    const spreadVal = interp(RANGE_FINE_KYD, depthData.spread_fine, currentR);
+    const cbX = RADAR_CB_X * sx;
+    const cbY = RADAR_CB_Y * sy;
+    const cbW = RADAR_CB_W * sx;
+    const cbH = RADAR_CB_H * sy;
+
+    const frac = Math.max(0, Math.min(1.0, spreadVal / MAX_SPREAD));
+    const needleX = cbX + cbW * frac;
+
+    const spreadTier = (spreadVal > TH_YEL) ? "Volatile" : (spreadVal > TH_FLAT) ? "Moderate" : "Steady";
+    ctx.fillStyle = getSpreadColorCss(spreadVal);
+    ctx.font = "bold 9.5px Consolas, monospace";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    ctx.fillText(`${spreadVal.toFixed(1)} dB (${spreadTier})`, cbX + cbW, (RADAR_CB_Y - 17) * sy);
+
+    ctx.fillStyle = "#000000";
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(needleX, cbY - 2 * sy);
+    ctx.lineTo(needleX, cbY + cbH + 2 * sy);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(needleX, cbY + 1 * sy);
+    ctx.lineTo(needleX - 6 * sx, cbY - 7 * sy);
+    ctx.lineTo(needleX + 6 * sx, cbY - 7 * sy);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+}
+
+// DRAW 1D TRANSMISSION LOSS PLOT
+function drawTLPlot() {
+  const canvas = document.getElementById('tlCanvas');
+  const { ctx, width, height } = setupCanvas(canvas);
+  const depthData = DEPTH_LIST[activeDepthIdx];
+  const FOM = SONAR_FOM;
+
+  // Chart Margins
+  const ml = 45, mr = 20, mt = 18, mb = 28;
+  const pw = width - ml - mr;
+  const ph = height - mt - mb;
+
+  // Ranges: X from 0 to 43.7 kyd (40 km), Y from 55 to 125 dB (inverted: 55 at top, 125 at bottom)
+  const xMin = 0, xMax = MAX_RANGE_KYD;
+  const yMin = 55, yMax = 125;
+
+  const toX = (r) => ml + ((r - xMin) / (xMax - xMin)) * pw;
+  const toY = (tl) => mt + ((tl - yMin) / (yMax - yMin)) * ph;
+
+  // Background
+  ctx.fillStyle = "#0a0e16";
+  ctx.fillRect(0, 0, width, height);
+
+  // Grid lines
+  ctx.lineWidth = 0.8;
+  ctx.strokeStyle = "rgba(71, 85, 105, 0.4)";
+  for (let r = 0; r <= 40; r += 10) {
+    const gx = toX(r);
+    ctx.beginPath(); ctx.moveTo(gx, mt); ctx.lineTo(gx, mt + ph); ctx.stroke();
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "9px Consolas, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillText(`${r}`, gx, mt + ph + 5);
+  }
+  ctx.fillText("Range (kyd)", ml + pw / 2, mt + ph + 16);
+
+  for (let tl = 60; tl <= 120; tl += 20) {
+    const gy = toY(tl);
+    ctx.beginPath(); ctx.moveTo(ml, gy); ctx.lineTo(ml + pw, gy); ctx.stroke();
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "9px Consolas, monospace";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    ctx.fillText(`${tl}`, ml - 6, gy);
+  }
+  ctx.save();
+  ctx.translate(12, mt + ph / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText("TL (dB)", 0, 0);
+  ctx.restore();
+
+  // 20 Monte Carlo Lines in medium gray
+  const rKyd = RANGE_KYD;
+  ctx.lineWidth = 1.1;
+  ctx.strokeStyle = "rgba(148, 163, 184, 0.45)";
+  getMcCurves(depthData).forEach(curve => {
+    ctx.beginPath();
+    for (let k = 0; k < rKyd.length; k++) {
+      const px = toX(rKyd[k]);
+      const py = toY(curve[k]);
+      if (k === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+  });
+
+  // Mean TL Curve in Cyan
+  ctx.lineWidth = 2.4;
+  ctx.strokeStyle = "#14d9d9";
+  ctx.beginPath();
+  for (let k = 0; k < rKyd.length; k++) {
+    const px = toX(rKyd[k]);
+    const py = toY(depthData.mean_TL[k]);
+    if (k === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.stroke();
+
+  // FOM Dashed Line (104 dB)
+  const fomY = toY(FOM);
+  ctx.save();
+  ctx.lineWidth = 1.6;
+  ctx.strokeStyle = "#cbd5e1";
+  ctx.setLineDash([5, 4]);
+  ctx.beginPath();
+  ctx.moveTo(ml, fomY);
+  ctx.lineTo(ml + pw, fomY);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.fillStyle = "#cbd5e1";
+  ctx.font = "bold 9px Consolas, monospace";
+  ctx.textAlign = "left";
+  ctx.fillText("Detection Limit (FOM)", ml + 6, fomY - 5);
+
+  // Max Detection Range Dotted Line at R_nom
+  const R_nom = depthData.R_nom_kyd;
+  const cutoffX = toX(R_nom);
+  ctx.save();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = "#94a3b8";
+  ctx.setLineDash([2, 3]);
+  ctx.beginPath();
+  ctx.moveTo(cutoffX, mt);
+  ctx.lineTo(cutoffX, mt + ph);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "bold 9px Consolas, monospace";
+  ctx.textAlign = "center";
+  ctx.fillText(`Max Range: ${R_nom.toFixed(1)} kyd`, cutoffX, mt + 8);
+
+  // Cutoff Star at (R_nom, FOM)
+  ctx.fillStyle = "#e2e8f0";
+  ctx.strokeStyle = "#000000";
+  ctx.lineWidth = 1.2;
+  drawStar(ctx, cutoffX, fomY, 5, 6, 3);
+
+  // Active Interactive Highlight Cursor Line
+  const currentR = isPinned ? pinnedRange : hoveredRange;
+  if (currentR !== null && currentR >= 0 && currentR <= MAX_RANGE_KYD) {
+    const curX = toX(currentR);
+    ctx.lineWidth = 2.2;
+    ctx.strokeStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.moveTo(curX, mt);
+    ctx.lineTo(curX, mt + ph);
+    ctx.stroke();
+  }
+}
+
+// DRAW TACTICAL PROBABILITY OF DETECTION (Pd) PLOT
+function drawPdPlot() {
+  const canvas = document.getElementById('pdCanvas');
+  const { ctx, width, height } = setupCanvas(canvas);
+  const depthData = DEPTH_LIST[activeDepthIdx];
+
+  // Chart Margins
+  const ml = 45, mr = 20, mt = 16, mb = 28;
+  const pw = width - ml - mr;
+  const ph = height - mt - mb;
+
+  const xMin = 0, xMax = MAX_RANGE_KYD;
+  const yMin = 0, yMax = 105;
+
+  const toX = (r) => ml + ((r - xMin) / (xMax - xMin)) * pw;
+  const toY = (pd) => mt + (1 - (pd - yMin) / (yMax - yMin)) * ph;
+
+  // Background
+  ctx.fillStyle = "#0a0e16";
+  ctx.fillRect(0, 0, width, height);
+
+  // Grid lines
+  ctx.lineWidth = 0.8;
+  ctx.strokeStyle = "rgba(71, 85, 105, 0.4)";
+  for (let r = 0; r <= 40; r += 10) {
+    const gx = toX(r);
+    ctx.beginPath(); ctx.moveTo(gx, mt); ctx.lineTo(gx, mt + ph); ctx.stroke();
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "9px Consolas, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillText(`${r}`, gx, mt + ph + 5);
+  }
+  ctx.fillText("Range (kyd)", ml + pw / 2, mt + ph + 16);
+
+  for (let pd = 0; pd <= 100; pd += 25) {
+    const gy = toY(pd);
+    ctx.beginPath(); ctx.moveTo(ml, gy); ctx.lineTo(ml + pw, gy); ctx.stroke();
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "9px Consolas, monospace";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    ctx.fillText(`${pd}%`, ml - 6, gy);
+  }
+  ctx.save();
+  ctx.translate(12, mt + ph / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText("Pd (%)", 0, 0);
+  ctx.restore();
+
+  // Shaded Pd Area
+  const rFine = RANGE_FINE_KYD;
+  const pdFine = depthData.Pd_fine;
+  const zeroY = toY(0);
+
+  ctx.beginPath();
+  ctx.moveTo(toX(rFine[0]), zeroY);
+  for (let i = 0; i < rFine.length; i++) {
+    ctx.lineTo(toX(rFine[i]), toY(pdFine[i]));
+  }
+  ctx.lineTo(toX(rFine[rFine.length - 1]), zeroY);
+  ctx.closePath();
+  ctx.fillStyle = "rgba(71, 85, 105, 0.45)";
+  ctx.fill();
+
+  ctx.lineWidth = 1.6;
+  ctx.strokeStyle = "#cbd5e1";
+  ctx.stroke();
+
+  // 50% Threshold Line
+  const y50 = toY(50);
+  ctx.save();
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = "#94a3b8";
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(ml, y50);
+  ctx.lineTo(ml + pw, y50);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "9px Consolas, monospace";
+  ctx.textAlign = "left";
+  ctx.fillText("50% Threshold", ml + 6, y50 - 4);
+
+  // Cutoff Dotted Line at R_nom
+  const R_nom = depthData.R_nom_kyd;
+  const cutoffX = toX(R_nom);
+  ctx.save();
+  ctx.lineWidth = 1.4;
+  ctx.strokeStyle = "#94a3b8";
+  ctx.setLineDash([2, 3]);
+  ctx.beginPath();
+  ctx.moveTo(cutoffX, mt);
+  ctx.lineTo(cutoffX, mt + ph);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "bold 9px Consolas, monospace";
+  ctx.textAlign = "center";
+  ctx.fillText(`Max Range: ${R_nom.toFixed(1)} kyd`, cutoffX, mt + 8);
+
+  // Active Interactive Highlight Cursor Line
+  const currentR = isPinned ? pinnedRange : hoveredRange;
+  if (currentR !== null && currentR >= 0 && currentR <= MAX_RANGE_KYD) {
+    const curX = toX(currentR);
+    ctx.lineWidth = 2.2;
+    ctx.strokeStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.moveTo(curX, mt);
+    ctx.lineTo(curX, mt + ph);
+    ctx.stroke();
+  }
+}
+
+function drawStar(ctx, cx, cy, spikes, outerRadius, innerRadius) {
+  let rot = Math.PI / 2 * 3;
+  let x = cx, y = cy;
+  let step = Math.PI / spikes;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - outerRadius);
+  for (let i = 0; i < spikes; i++) {
+    x = cx + Math.cos(rot) * outerRadius;
+    y = cy + Math.sin(rot) * outerRadius;
+    ctx.lineTo(x, y);
+    rot += step;
+    x = cx + Math.cos(rot) * innerRadius;
+    y = cy + Math.sin(rot) * innerRadius;
+    ctx.lineTo(x, y);
+    rot += step;
+  }
+  ctx.lineTo(cx, cy - outerRadius);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+}
+
+// UPDATE TACTICAL RANGE INSPECTOR & HUD BOXES
+function updateInspector() {
+  const currentR = isPinned ? pinnedRange : hoveredRange;
+  const depthData = DEPTH_LIST[activeDepthIdx];
+  const depthM = depthData.depth;
+  const depthFt = formatDepthFt(depthM);
+  const FOM = SONAR_FOM;
+
+  const rSpread = interp(RANGE_FINE_KYD, depthData.spread_fine, currentR);
+  const curHeave = interp(RANGE_FINE_KYD, depthData.heave_fine, currentR);
+  const curBulk = interp(RANGE_FINE_KYD, depthData.bulk_fine, currentR);
+  const heavePct = Math.round(curHeave * curHeave * 100);
+  const pDet = Math.round(interp(RANGE_FINE_KYD, depthData.Pd_fine, currentR));
+  const tlVal = interp(RANGE_KYD, depthData.mean_TL, currentR);
+  const sigMargin = FOM - tlVal;
+  const marginStr = (sigMargin >= 0) 
+    ? `+${sigMargin.toFixed(1)} dB Above FOM` 
+    : `-${Math.abs(sigMargin).toFixed(1)} dB Below FOM`;
+
+  // Dynamic Color Sampling from Radar Gradient (Box matches Radar 1:1)
+  const statRgb = getSpreadColor(rSpread);
+  const statColor = `rgb(${statRgb[0]}, ${statRgb[1]}, ${statRgb[2]})`;
+
+  let relStatus = "";
+  if (rSpread > TUKEY_HI) {
+    relStatus = "HIGH VOLATILITY (RED)";
+  } else if (rSpread > TH_YEL) {
+    relStatus = "ELEVATED VOLATILITY (AMBER)";
+  } else if (rSpread > TH_FLAT) {
+    relStatus = "MODERATE FADING (YELLOW)";
+  } else {
+    relStatus = "HIGH CONFIDENCE (GREEN)";
+  }
+
+  const R_nom = depthData.R_nom_kyd;
+  let oceanCause = "";
+  if (Math.abs(currentR - R_nom) <= 1.8 * KM_TO_KYD) {
+    if (rSpread >= TH_FLAT) {
+      oceanCause = `Range Boundary: Max detection range (~${R_nom.toFixed(1)} kyd) shifts with wave heave (${heavePct}% correlation)`;
+    } else {
+      oceanCause = `Clear Detection Boundary: Clean signal drop-off near ${R_nom.toFixed(1)} kyd with low spread`;
+    }
+  } else if (currentR < R_nom) {
+    if (rSpread >= TH_YEL) {
+      if (curHeave >= 0.45) {
+        oceanCause = `Thermocline Heave: Internal waves drive ${heavePct}% of variance, shifting surface duct across target`;
+      } else if (curBulk >= 0.45) {
+        oceanCause = `Thermal Stratification: Bulk water warming/cooling shifts water sound speeds (${Math.round(curBulk*curBulk*100)}% correlation)`;
+      } else {
+        oceanCause = `Multipath Interference: Phase cancellation between surface bounce and direct path`;
+      }
+    } else if (rSpread >= TH_FLAT) {
+      if (curHeave >= 0.35) {
+        oceanCause = `Internal Wave Wobble: Heave shifts sound paths, causing +/-${(rSpread/2).toFixed(1)} dB fading (${heavePct}% correlation)`;
+      } else {
+        oceanCause = `Mixed-Layer Leakage: Sound intermittently escapes the upper duct into the thermocline`;
+      }
+    } else {
+      if (depthM >= 200) {
+        oceanCause = `Deep Channel Stability: Target depth (${depthFt}) lies below surface waves (${heavePct}% wave correlation)`;
+      } else {
+        oceanCause = `Direct Sound Path: Steady propagation with minimal wave scattering`;
+      }
+    }
+  } else {
+    if (rSpread >= TH_YEL) {
+      oceanCause = `Shadow Zone Variability: Weak diffracted energy fluctuates beyond max range (${heavePct}% wave-driven)`;
+    } else if (rSpread >= TH_FLAT) {
+      oceanCause = `Acoustic Shadow Leakage: Faint bottom-reflected energy past expected detection range`;
+    } else {
+      oceanCause = `Out of Range (Acoustic Shadow): Signal lost below ocean noise across all runs`;
+    }
+  }
+
+  const bottomM = interp(RANGE_FINE_KYD, BATHY_FINE_M, currentR);
+  const bottomFt = formatDepthFt(bottomM);
+
+  // Update Inspector DOM (Dynamic border color and status badge)
+  const box = document.getElementById('inspectorBox');
+  box.style.borderColor = statColor;
+
+  document.getElementById('inspLine1').textContent =
+    `[${isPinned ? 'LOCKED PIN' : 'CURSOR'}: ${currentR.toFixed(1)} kyd]  |  P_d = ${pDet}% (${marginStr})  |  Seafloor: ${bottomFt}`;
+
+  document.getElementById('inspLine2').innerHTML =
+    `RELIABILITY : <span class="stat-badge" id="inspStatus" style="color: ${statColor};">${relStatus}</span> &nbsp;|&nbsp; Acoustic Spread: &Delta;TL = ${rSpread.toFixed(1)} dB (&plusmn;${(rSpread/2).toFixed(1)} dB)`;
+
+  document.getElementById('inspLine3').textContent = `OCEAN CAUSE : ${oceanCause}`;
+
+  // Update Titles, Slider Readout & Target-Depth Max Range
+  document.getElementById('depthReadout').textContent = depthFt;
+  document.getElementById('depthMaxRangePill').textContent =
+    `Max Range: ${R_nom.toFixed(1)} kyd (\u00B1${depthData.spread_kyd.toFixed(1)})`;
+  document.getElementById('tlDepthSpan').textContent = depthFt;
+  document.getElementById('pdDepthSpan').textContent = depthFt;
+
+  // Update Pin Badge
+  const pinBadge = document.getElementById('pinStatusBadge');
+  const lockBtn = document.getElementById('btnLockToggle');
+  if (isPinned) {
+    pinBadge.textContent = `[PINNED AT ${pinnedRange.toFixed(1)} KYD - CLICK TO UNLOCK]`;
+    pinBadge.classList.add('pinned');
+    lockBtn.textContent = 'Unlock Pin';
+    lockBtn.style.borderColor = COLOR_YELLOW;
+    lockBtn.style.color = COLOR_YELLOW;
+  } else {
+    pinBadge.textContent = '[LIVE HOVER MODE]';
+    pinBadge.classList.remove('pinned');
+    lockBtn.textContent = 'Lock Pin';
+    lockBtn.style.borderColor = '';
+    lockBtn.style.color = '';
+  }
+}
+
+let rafPending = false;
+function scheduleRender() {
+  if (rafPending) return;
+  rafPending = true;
+  requestAnimationFrame(() => {
+    rafPending = false;
+    renderAll();
+  });
+}
+
+function renderAll() {
+  drawRadar();
+  drawTLPlot();
+  drawPdPlot();
+  updateInspector();
+}
+
+// MOUSE INTERACTION ON RADAR CANVAS
+const radarCanvas = document.getElementById('radarCanvas');
+
+function getRadarPolarFromEvent(e) {
+  const rect = radarCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  if (my > (RADAR_CB_BOX_Y / RADAR_H) * rect.height) return null;
+  const cx = (RADAR_CX / RADAR_W) * rect.width;
+  const cy = (RADAR_CY / RADAR_H) * rect.height;
+  const dx = mx - cx;
+  const dy = my - cy;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const scale = ((RADAR_R_PX_MAX / RADAR_W) * rect.width) / MAX_RANGE_KYD;
+  return {
+    range: Math.max(0, Math.min(MAX_RANGE_KYD, dist / scale)),
+    theta: Math.atan2(dy, dx)
+  };
+}
+
+radarCanvas.addEventListener('mousemove', (e) => {
+  if (isPinned) return;
+  const polar = getRadarPolarFromEvent(e);
+  if (!polar) return;
+  hoveredRange = polar.range;
+  hoveredTheta = polar.theta;
+  scheduleRender();
+});
+
+radarCanvas.addEventListener('click', (e) => {
+  const polar = getRadarPolarFromEvent(e);
+  if (!polar) return;
+
+  if (!isPinned) {
+    isPinned = true;
+    pinnedRange = polar.range;
+    pinnedTheta = polar.theta;
+  } else {
+    isPinned = false;
+    pinnedRange = null;
+    hoveredRange = polar.range;
+    hoveredTheta = polar.theta;
+  }
+  renderAll();
+});
+
+// MOUSE INTERACTION ON 1D CHARTS
+function attachChartHover(canvasId) {
+  const cvs = document.getElementById(canvasId);
+  cvs.addEventListener('mousemove', (e) => {
+    if (isPinned) return;
+    const rect = cvs.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const ml = 45, mr = 20;
+    const pw = rect.width - ml - mr;
+    if (mx >= ml && mx <= ml + pw) {
+      const frac = (mx - ml) / pw;
+      hoveredRange = Math.max(0, Math.min(MAX_RANGE_KYD, frac * MAX_RANGE_KYD));
+      hoveredTheta = Math.PI / 4;
+      scheduleRender();
+    }
+  });
+
+  cvs.addEventListener('click', (e) => {
+    const rect = cvs.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const ml = 45, mr = 20;
+    const pw = rect.width - ml - mr;
+    if (mx >= ml && mx <= ml + pw) {
+      const frac = (mx - ml) / pw;
+      const rTarget = Math.max(0, Math.min(MAX_RANGE_KYD, frac * MAX_RANGE_KYD));
+      if (!isPinned) {
+        isPinned = true;
+        pinnedRange = rTarget;
+        pinnedTheta = Math.PI / 4;
+      } else {
+        isPinned = false;
+        pinnedRange = null;
+        hoveredRange = rTarget;
+      }
+      renderAll();
+    }
+  });
+}
+attachChartHover('tlCanvas');
+attachChartHover('pdCanvas');
+
+// TARGET DEPTH SLIDER + PRESET BUTTONS INITIALIZATION
+const depthSlider = document.getElementById('depthSlider');
+const depthButtonRow = document.getElementById('depthButtonRow');
+let presetButtons = [];
+
+function syncDepthControls() {
+  depthSlider.value = String(activeDepthIdx);
+  document.getElementById('depthReadout').textContent = formatDepthFt(DEPTH_LIST[activeDepthIdx].depth);
+  presetButtons.forEach(btn => {
+    const pIdx = parseInt(btn.getAttribute('data-depth-idx'), 10);
+    btn.classList.toggle('active', pIdx === activeDepthIdx);
+  });
+}
+
+function setActiveDepthIdx(newIdx) {
+  const clamped = Math.max(0, Math.min(DEPTH_LIST.length - 1, newIdx));
+  if (clamped === activeDepthIdx) return;
+  activeDepthIdx = clamped;
+  syncDepthControls();
+  scheduleRender();
+}
+
+function switchScenario(newScenarioIdx) {
+  if (newScenarioIdx === activeScenarioIdx) return;
+  applyScenario(newScenarioIdx, true);
+  initDepthControls();
+  populateGlossaryModal();
+  scheduleRender();
+}
+
+function initDepthControls() {
+  document.getElementById('headerSubtitle').textContent =
+    `${OCEAN_LOCATION.toUpperCase()} \u2022 ${SONAR_FREQ_KHZ} kHz SONAR \u2022 ${SIM_DATA.N_mc || 20}-RUN MONTE CARLO ENSEMBLE`;
+
+  // Populate Header Sonar Equation Badge (Single authoritative FOM location)
+  document.getElementById('fomBadgeVal').textContent = `${SONAR_FOM} dB`;
+  document.getElementById('slBadgeVal').textContent = `${SONAR_SL}`;
+  document.getElementById('diBadgeVal').textContent = `${SONAR_DI}`;
+  document.getElementById('nlBadgeVal').textContent = `${SONAR_NL}`;
+  document.getElementById('dtBadgeVal').textContent = `${SONAR_DT}`;
+
+  // Populate Ocean Environment, Bathymetry & Platform Telemetry Card
+  document.getElementById('metaLocation').textContent = OCEAN_LOCATION;
+  document.getElementById('metaOceanDepth').textContent =
+    `${formatDepthFt(OCEAN_DEPTH_MIN_M)} \u2013 ${formatDepthFt(OCEAN_DEPTH_MAX_M)}`;
+  document.getElementById('metaReceiverDepth').textContent =
+    `${RECEIVER_DEPTH_FT} (${Math.round(RECEIVER_DEPTH_M)} m Fixed)`;
+  document.getElementById('metaThermocline').textContent =
+    `${formatDepthFt(THERMOCLINE_M)} (${Math.round(THERMOCLINE_M)} m)`;
+
+  const sensorWrap = document.getElementById('sensorSwitchWrap');
+  const sensorRow = document.getElementById('sensorSwitchRow');
+  if (sensorRow) {
+    sensorRow.innerHTML = '';
+    if (SCENARIO_LIST.length > 1) {
+      if (sensorWrap) sensorWrap.style.display = 'flex';
+      SCENARIO_LIST.forEach((sc, sIdx) => {
+        const btn = document.createElement('button');
+        btn.className = 'sensor-btn' + (sIdx === activeScenarioIdx ? ' active' : '');
+        btn.textContent = sc._label;
+        btn.title = `Switch fixed sonar depth to ${sc._label}`;
+        btn.addEventListener('click', () => switchScenario(sIdx));
+        sensorRow.appendChild(btn);
+      });
+    } else if (sensorWrap) {
+      sensorWrap.style.display = 'none';
+    }
+  }
+
+  document.getElementById('depthPanelLabel').textContent =
+    `TARGET DEPTH (${formatDepthFt(DEPTH_LIST[0].depth)} \u2013 ${formatDepthFt(DEPTH_LIST[DEPTH_LIST.length - 1].depth)}):`;
+  document.getElementById('depthMinLbl').textContent = formatDepthFt(DEPTH_LIST[0].depth);
+  document.getElementById('depthMaxLbl').textContent = formatDepthFt(DEPTH_LIST[DEPTH_LIST.length - 1].depth);
+
+  depthSlider.min = '0';
+  depthSlider.max = String(Math.max(0, DEPTH_LIST.length - 1));
+  depthSlider.disabled = (DEPTH_LIST.length <= 1);
+
+  depthButtonRow.innerHTML = '';
+  presetButtons = PRESET_INDICES.map(pIdx => {
+    const btn = document.createElement('button');
+    btn.className = 'depth-btn';
+    btn.setAttribute('data-depth-idx', String(pIdx));
+    btn.textContent = formatDepthFt(DEPTH_LIST[pIdx].depth);
+    btn.addEventListener('click', () => setActiveDepthIdx(pIdx));
+    depthButtonRow.appendChild(btn);
+    return btn;
+  });
+
+  syncDepthControls();
+}
+
+// INTERACTIVE GLOSSARY FOR SONAR EQUATION TERMS ONLY
+function getTermDefs() {
+  return {
+    FOM: {
+      title: 'FOM \u2014 Figure of Merit',
+      val: `${SONAR_FOM} dB  (SL + DI \u2212 NL \u2212 DT)`,
+      desc: 'Maximum signal loss allowed before the target becomes undetectable.'
+    },
+    SL: {
+      title: 'SL \u2014 Source Level',
+      val: `${SONAR_SL} dB`,
+      desc: 'How loud the assumed target is at 1 meter.'
+    },
+    DI: {
+      title: 'DI \u2014 Directivity Index',
+      val: `+${SONAR_DI} dB`,
+      desc: 'Noise-rejection gain from aiming the sonar array.'
+    },
+    NL: {
+      title: 'NL \u2014 Noise Level',
+      val: `${SONAR_NL} dB`,
+      desc: 'Background ocean noise from waves, wind, and ships.'
+    },
+    DT: {
+      title: 'DT \u2014 Detection Threshold',
+      val: `${SONAR_DT} dB`,
+      desc: 'Minimum signal-above-noise margin needed to detect a target.'
+    },
+    TL: {
+      title: 'TL \u2014 Transmission Loss',
+      val: 'dB over range',
+      desc: 'Sound energy lost traveling through the ocean; target is heard when TL \u2264 FOM.'
+    }
+  };
+}
+
+const glossaryBackdrop = document.getElementById('glossaryBackdrop');
+
+function populateGlossaryModal() {
+  document.getElementById('glossaryEquation').innerHTML =
+    `<strong>Sonar Equation:</strong> &nbsp;<code>FOM = SL + DI &minus; (NL + DT)</code> &nbsp;=&nbsp; ` +
+    `<code>${SONAR_SL} + ${SONAR_DI} &minus; (${SONAR_NL} + ${SONAR_DT}) = <strong>${SONAR_FOM} dB</strong></code><br>` +
+    `<span style="color:#94a3b8;">A target is detectable when Transmission Loss (TL) is at or below ${SONAR_FOM} dB.</span>`;
+  const grid = document.getElementById('glossaryGrid');
+  grid.innerHTML = Object.entries(getTermDefs()).map(([code, def]) =>
+    `<div class="glossary-item">` +
+    `<div class="glossary-item-head"><span class="glossary-item-code">${code}</span>` +
+    `<span class="glossary-item-val">${def.val}</span></div>` +
+    `<div class="glossary-item-name">${def.title.replace(/^[^\u2014]+\u2014\s*/, '')}</div>` +
+    `<div class="glossary-item-desc">${def.desc}</div>` +
+    `</div>`
+  ).join('');
+}
+
+function toggleGlossary(openState) {
+  const next = (typeof openState === 'boolean') ? openState : !glossaryBackdrop.classList.contains('open');
+  glossaryBackdrop.classList.toggle('open', next);
+  glossaryBackdrop.setAttribute('aria-hidden', next ? 'false' : 'true');
+}
+
+document.getElementById('btnGlossary').addEventListener('click', () => toggleGlossary(true));
+document.getElementById('btnCloseGlossary').addEventListener('click', () => toggleGlossary(false));
+glossaryBackdrop.addEventListener('click', (e) => {
+  if (e.target === glossaryBackdrop) toggleGlossary(false);
+});
+
+// LOCK PIN BUTTON
+document.getElementById('btnLockToggle').addEventListener('click', () => {
+  if (!isPinned) {
+    isPinned = true;
+    pinnedRange = hoveredRange;
+    pinnedTheta = hoveredTheta;
+  } else {
+    isPinned = false;
+    pinnedRange = null;
+  }
+  renderAll();
+});
+
+// KEYBOARD NAVIGATION
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    toggleGlossary(false);
+    return;
+  }
+  if (glossaryBackdrop.classList.contains('open')) return;
+  if (e.key === ' ' || e.code === 'Space') {
+    if (document.activeElement && document.activeElement.tagName === 'BUTTON') return;
+    e.preventDefault();
+    if (!isPinned) {
+      isPinned = true;
+      pinnedRange = hoveredRange;
+      pinnedTheta = hoveredTheta;
+    } else {
+      isPinned = false;
+      pinnedRange = null;
+    }
+    renderAll();
+  } else if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    let r = isPinned ? pinnedRange : hoveredRange;
+    r = Math.max(0, r - 0.2);
+    if (isPinned) pinnedRange = r; else hoveredRange = r;
+    scheduleRender();
+  } else if (e.key === 'ArrowRight') {
+    e.preventDefault();
+    let r = isPinned ? pinnedRange : hoveredRange;
+    r = Math.min(MAX_RANGE_KYD, r + 0.2);
+    if (isPinned) pinnedRange = r; else hoveredRange = r;
+    scheduleRender();
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    setActiveDepthIdx(activeDepthIdx + 1);
+  } else if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    setActiveDepthIdx(activeDepthIdx - 1);
+  } else if (['1', '2', '3', '4', '5'].includes(e.key)) {
+    const slot = parseInt(e.key, 10) - 1;
+    if (slot >= 0 && slot < PRESET_INDICES.length) {
+      setActiveDepthIdx(PRESET_INDICES[slot]);
+    }
+  }
+});
+
+// RESIZE HANDLER
+window.addEventListener('resize', () => {
+  scheduleRender();
+});
+
+// INITIAL RENDER
+window.addEventListener('DOMContentLoaded', () => {
+  depthSlider.addEventListener('input', () => {
+    setActiveDepthIdx(parseInt(depthSlider.value, 10));
+  });
+  initDepthControls();
+  populateGlossaryModal();
+  hoveredRange = DEPTH_LIST[activeDepthIdx].R_nom_kyd;
+  renderAll();
+});
+</script>
+</body>
+</html>

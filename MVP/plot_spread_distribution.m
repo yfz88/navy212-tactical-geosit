@@ -1,325 +1,385 @@
-function plot_spread_distribution(results_file)
+function plot_spread_distribution(results_or_ens, close_fig)
     % PLOT_SPREAD_DISTRIBUTION
-    % Diagnostic tool to analyze the empirical Transmission Loss spread
-    % (Max - Min in dB) distribution across sensor depths, matching the
-    % exact styling and 3-color system of GeoSit Option B.
+    % Analyzes empirical Transmission Loss spread (Max - Min in dB) across all
+    % modeled target depths (and 5 quick-compare preset depths) using the shared
+    % adaptive IQR/boxplot calibration from compute_ensemble_stats.
     %
     % Displays:
-    %   1. Active Depth 3-Color Histogram: Cyany Green, Yellow, and Red bars
-    %      with Median and Cutoff reference lines.
-    %   2. Comparative Cumulative Distribution (CDF): Visualizes all 5 depths
-    %      to show why coloring shifts between green, yellow, and red.
-    %   3. Simple Real-Time Depth Buttons: [20 m] [50 m] [100 m] [200 m] [500 m].
+    %   1. Horizontal IQR Boxplot (Q1, Median, Q3, 1.5*IQR Whiskers, Outliers)
+    %   2. Empirical Histogram colored 1:1 with the GeoSit IQR gradient
+    %   3. Multi-Depth CDF Cloud across all target depths + 5 preset curves
 
-    if nargin < 1 || isempty(results_file)
-        results_file = fullfile(pwd, 'Outputs', 'MonteCarlo_Results.mat');
+    if nargin < 1
+        results_or_ens = [];
+    end
+    if nargin < 2 || isempty(close_fig)
+        close_fig = false;
     end
 
-    if ~exist(results_file, 'file')
-        error('Results file not found: %s. Run run_monte_carlo first.', results_file);
+    script_dir = fileparts(mfilename('fullpath'));
+    if ~exist('compute_ensemble_stats', 'file')
+        addpath(script_dir);
     end
 
-    data = load(results_file);
-    r_km = data.r_km(:)';
-    N_mc = data.N_mc;
+    ens = compute_ensemble_stats(results_or_ens, script_dir);
 
-    preset_depths = [20, 50, 100, 200, 500];
-    preset_labels = {'20 m', '50 m', '100 m', '200 m', '500 m'};
-    n_btns        = length(preset_depths);
-    active_depth  = 100;
-    if isfield(data, 'depth2plot') && any(preset_depths == data.depth2plot)
-        active_depth = data.depth2plot;
-    end
-
-    % -------------------------------------------------------------
-    % 1. Pre-load or extract multi-depth 20-run acoustic ensemble
-    % -------------------------------------------------------------
-    TL_by_depth = containers.Map('KeyType', 'int32', 'ValueType', 'any');
-    if isfield(data, 'TL_depths') && isstruct(data.TL_depths)
-        for d = preset_depths
-            f_name = sprintf('d%d', d);
-            if isfield(data.TL_depths, f_name)
-                TL_by_depth(int32(d)) = data.TL_depths.(f_name);
-            end
-        end
-    end
-
-    if isempty(TL_by_depth) || ~isKey(TL_by_depth, int32(active_depth))
-        out_folder = fileparts(results_file);
-        if isempty(out_folder), out_folder = fullfile(pwd, 'Outputs'); end
-
-        has_shd = true;
-        for i = 1:N_mc
-            if ~exist(fullfile(out_folder, sprintf('Test_MC_%d.shd.mat', i)), 'file')
-                has_shd = false; break;
-            end
-        end
-
-        if has_shd
-            disp('  [Spread Distribution]: Extracting 20-run acoustic ensemble across depths...');
-            z_vec = data.z_m;
-            TL_depths_extracted = struct();
-            for d = preset_depths
-                TL_depths_extracted.(sprintf('d%d', d)) = zeros(N_mc, length(r_km));
-            end
-            for i = 1:N_mc
-                shd_file = fullfile(out_folder, sprintf('Test_MC_%d.shd.mat', i));
-                res = load(shd_file, 'pressure');
-                TL_2d = -20 * log10(squeeze(abs(res.pressure)));
-                for d = preset_depths
-                    [~, idx_d] = min(abs(z_vec - d));
-                    row_d = TL_2d(idx_d, :);
-                    if isinf(row_d(1)), row_d(1) = row_d(3); end
-                    if isinf(row_d(2)), row_d(2) = row_d(3); end
-                    TL_depths_extracted.(sprintf('d%d', d))(i, :) = row_d;
-                end
-            end
-            for d = preset_depths
-                TL_by_depth(int32(d)) = TL_depths_extracted.(sprintf('d%d', d));
-            end
-            try
-                TL_depths = TL_depths_extracted;
-                save(results_file, 'TL_depths', '-append');
-            catch
-            end
-        else
-            TL_by_depth(int32(active_depth)) = data.TL_all;
-        end
-    end
+    depth_stats    = ens.depth_stats;
+    all_cdfs_x     = ens.all_cdfs_x;
+    all_cdfs_y     = ens.all_cdfs_y;
+    btn_keys       = ens.btn_keys;
+    btn_labels     = ens.btn_labels;
+    btn_tooltips   = ens.btn_tooltips;
+    preset_keys    = ens.preset_keys;
+    n_depths       = ens.n_depths;
+    out_folder     = ens.out_folder;
+    version_suffix = ens.version_suffix;
+    cs             = ens.color_scale;
 
     % -------------------------------------------------------------
-    % 2. Exact Colors Matched to GeoSit Option B
+    % 1. Adaptive IQR Color Palette & Dynamic Axis Bounds
     % -------------------------------------------------------------
-    c_bg_dark = [0.04, 0.05, 0.07]; % Deep Tactical Obsidian
-    c_ax_bg   = [0.08, 0.08, 0.08]; % Grayscale axes background
-    c_grid    = [0.30, 0.30, 0.30]; % Grayscale grid
-    c_text    = [0.70, 0.70, 0.70]; % Grayscale text & labels
+    c_bg_dark = [0.04, 0.05, 0.07];
+    c_ax_bg   = [0.08, 0.08, 0.08];
+    c_grid    = [0.28, 0.28, 0.28];
+    c_text    = [0.75, 0.78, 0.82];
 
-    % Strict 3-Color Palette (Identical to GeoSit B)
-    c_green   = [0.08, 0.82, 0.60]; % Crisp Tactical Cyany Green (<= 4.5 dB)
-    c_yellow  = [0.98, 0.85, 0.12]; % Vibrant Amber / Yellow (4.5 - 7.5 dB)
-    c_red     = [0.95, 0.20, 0.20]; % Hot Tactical Red (> 7.5 dB)
-    c_active  = [0.08, 0.85, 0.85]; % Active Accent Cyan
+    c_green   = [0.08, 0.82, 0.60];
+    c_yellow  = [0.98, 0.85, 0.12];
+    c_red     = [0.95, 0.20, 0.20];
+    c_active  = [0.08, 0.85, 0.85];
 
-    th_green  = 4.5; % Flat green threshold
-    th_red    = 7.5; % Yellow-to-red threshold
-
-    % Compute distribution stats for each depth
-    depth_stats = struct();
-    for d = preset_depths
-        if isKey(TL_by_depth, int32(d))
-            tl_mat = TL_by_depth(int32(d));
-            for row = 1:N_mc
-                if isinf(tl_mat(row, 1)), tl_mat(row, 1) = tl_mat(row, 3); end
-                if isinf(tl_mat(row, 2)), tl_mat(row, 2) = tl_mat(row, 3); end
-            end
-            sp = max(tl_mat, [], 1) - min(tl_mat, [], 1);
-            sp = sp(isfinite(sp));
-            sp_sort = sort(sp);
-            n_pts = length(sp_sort);
-
-            s.spread     = sp;
-            s.min        = min(sp);
-            s.max        = max(sp);
-            s.median     = median(sp);
-            s.p33        = sp_sort(max(1, round(0.333 * n_pts)));
-            s.p66        = sp_sort(min(n_pts, round(0.667 * n_pts)));
-
-            s.pct_green  = mean(sp <= th_green) * 100;
-            s.pct_yellow = mean(sp > th_green & sp <= th_red) * 100;
-            s.pct_red    = mean(sp > th_red) * 100;
-
-            s.cdf_x = [0, sp_sort];
-            s.cdf_y = [0, (1:n_pts) / n_pts * 100];
-
-            depth_stats.(sprintf('d%d', d)) = s;
-        end
-    end
+    th_green   = cs.th_flat;
+    th_red     = cs.th_yel;
+    tukey_ref  = cs.tukey_hi;
+    max_spread = cs.max_spread;
+    x_lim_max  = max(20, ceil(max_spread / 2) * 2 + 2);
 
     % -------------------------------------------------------------
-    % 3. Create Clean Diagnostic Figure
+    % 2. Build 3-Panel Diagnostic Figure (Boxplot + Histogram + CDF)
     % -------------------------------------------------------------
-    % Safe screen-centered sizing to ensure window and buttons never clip on any monitor
     screen_sz = get(0, 'ScreenSize');
-    fig_w = min(980, screen_sz(3) - 60);
-    fig_h = min(700, screen_sz(4) - 80);
+    fig_w = min(1060, screen_sz(3) - 60);
+    fig_h = min(800, screen_sz(4) - 60);
     fig_x = max(20, round((screen_sz(3) - fig_w) / 2));
-    fig_y = max(40, round((screen_sz(4) - fig_h) / 2));
+    fig_y = max(30, round((screen_sz(4) - fig_h) / 2));
 
     fig = figure('Position', [fig_x, fig_y, fig_w, fig_h], 'Color', c_bg_dark, ...
-                 'Name', 'ACOUSTIC UNCERTAINTY DISTRIBUTION (GEOSIT B MATCHED)', ...
+                 'Name', 'ALL-DEPTH ACOUSTIC UNCERTAINTY IQR & DISTRIBUTION', ...
                  'MenuBar', 'none', 'NumberTitle', 'off');
 
-    % Header text
-    annotation('textbox', [0.08, 0.915, 0.38, 0.055], ...
-               'String', '\bf[ACOUSTIC SPREAD DISTRIBUTION]', ...
-               'Color', c_active, 'FontSize', 10, 'FontName', 'Consolas', ...
+    annotation('textbox', [0.06, 0.928, 0.42, 0.050], ...
+               'String', '\bf[ALL-DEPTH SPREAD & IQR BOXPLOT]', ...
+               'Color', c_active, 'FontSize', 10.5, 'FontName', 'Consolas', ...
                'EdgeColor', 'none', 'BackgroundColor', 'none');
 
-    % Simple Depth Selector Buttons in Top Header
-    btn_panel = uipanel('Parent', fig, 'Position', [0.48, 0.905, 0.44, 0.065], ...
+    btn_panel = uipanel('Parent', fig, 'Position', [0.46, 0.922, 0.48, 0.056], ...
                         'BackgroundColor', [0.05, 0.08, 0.12], 'BorderColor', [0.20, 0.45, 0.55]);
 
+    n_btns = length(btn_keys);
     btn_handles = gobjects(n_btns, 1);
     for b = 1:n_btns
-        bx = (b - 1) / n_btns + 0.01;
-        bw = (1 / n_btns) - 0.02;
-        d_val = preset_depths(b);
+        bx = (b - 1) / n_btns + 0.008;
+        bw = (1 / n_btns) - 0.016;
+        k_str = btn_keys{b};
         btn_handles(b) = uicontrol('Parent', btn_panel, 'Style', 'pushbutton', 'Units', 'normalized', ...
-                  'Position', [bx, 0.10, bw, 0.80], ...
-                  'String', preset_labels{b}, ...
-                  'BackgroundColor', [0.09, 0.14, 0.20], 'ForegroundColor', [0.55, 0.70, 0.80], ...
+                  'Position', [bx, 0.12, bw, 0.76], ...
+                  'String', btn_labels{b}, ...
+                  'BackgroundColor', [0.09, 0.14, 0.20], 'ForegroundColor', [0.60, 0.75, 0.85], ...
                   'FontSize', 8.5, 'FontWeight', 'bold', 'FontName', 'Consolas', ...
-                  'TooltipString', sprintf('Inspect spread distribution at %d m', d_val), ...
-                  'Callback', @(~, ~) set_active_depth(d_val));
+                  'TooltipString', btn_tooltips{b}, ...
+                  'Callback', @(~, ~) set_active_key(k_str));
     end
 
-    % PANEL 1: Active Depth 3-Color Histogram
-    ax_hist = subplot('Position', [0.08, 0.52, 0.84, 0.31]);
+    ax_box = subplot('Position', [0.08, 0.765, 0.86, 0.110]);
+    set(ax_box, 'Color', c_ax_bg, 'XColor', c_text, 'YColor', c_text);
+    hold(ax_box, 'on');
+
+    ax_hist = subplot('Position', [0.08, 0.435, 0.86, 0.245]);
     set(ax_hist, 'Color', c_ax_bg, 'XColor', c_text, 'YColor', c_text);
     hold(ax_hist, 'on');
 
-    % PANEL 2: Multi-Depth Cumulative Distribution Comparison (CDF)
-    ax_cdf = subplot('Position', [0.08, 0.10, 0.84, 0.31]);
+    ax_cdf = subplot('Position', [0.08, 0.075, 0.86, 0.255]);
     set(ax_cdf, 'Color', c_ax_bg, 'XColor', c_text, 'YColor', c_text);
     hold(ax_cdf, 'on');
 
-    % Grayscale line styles for all 5 depths
-    line_styles = {'-', '--', '-.', ':', '-'};
-    gray_shades = {
-        [0.50, 0.50, 0.50];  % 20 m
-        [0.62, 0.62, 0.62];  % 50 m
-        [0.72, 0.72, 0.72];  % 100 m
-        [0.55, 0.55, 0.55];  % 200 m
-        [0.42, 0.42, 0.42]   % 500 m
-    };
-
-    h_cdf_lines = gobjects(n_btns, 1);
-    for b = 1:n_btns
-        d_val = preset_depths(b);
-        s_key = sprintf('d%d', d_val);
-        if isfield(depth_stats, s_key)
-            s_d = depth_stats.(s_key);
-            h_cdf_lines(b) = plot(ax_cdf, s_d.cdf_x, s_d.cdf_y, line_styles{b}, ...
-                'Color', gray_shades{b}, 'LineWidth', 1.3, ...
-                'DisplayName', sprintf('%d m  (Median: %.1f dB | %.0f%% Green)', d_val, s_d.median, s_d.pct_green));
+    if ~isempty(all_cdfs_x)
+        for di = 1:length(all_cdfs_x)
+            plot(ax_cdf, all_cdfs_x{di}, all_cdfs_y{di}, '-', ...
+                 'Color', [0.50, 0.60, 0.72, 0.14], 'LineWidth', 0.7, ...
+                 'HandleVisibility', 'off');
         end
     end
 
-    % Reference cutoffs on CDF (matching GeoSit B)
-    xline(ax_cdf, th_green, ':', sprintf('Green Cutoff: %.1f dB', th_green), ...
-          'Color', c_green, 'LineWidth', 1.6, 'LabelVerticalAlignment', 'bottom', ...
-          'FontSize', 8.5, 'FontName', 'Consolas', 'FontWeight', 'bold');
-    xline(ax_cdf, th_red, ':', sprintf('Yellow/Red: %.1f dB', th_red), ...
-          'Color', c_red, 'LineWidth', 1.6, 'LabelVerticalAlignment', 'bottom', ...
-          'FontSize', 8.5, 'FontName', 'Consolas', 'FontWeight', 'bold');
+    line_styles = {'--', '-.', ':', '-', '-'};
+    preset_cols = {
+        [0.85, 0.65, 0.45];
+        [0.95, 0.42, 0.42];
+        [0.65, 0.78, 0.90];
+        [0.45, 0.85, 0.65];
+        [0.55, 0.62, 0.75]
+    };
+
+    n_pre = length(preset_keys);
+    h_cdf_lines = gobjects(1 + n_pre, 1);
+    cdf_keys    = [{'all'}, preset_keys];
+
+    s_all = depth_stats.all;
+    h_cdf_lines(1) = plot(ax_cdf, s_all.cdf_x, s_all.cdf_y, '-', ...
+        'Color', c_active, 'LineWidth', 2.8, ...
+        'DisplayName', sprintf('ALL %d DEPTHS  (Q1 %.1f | Med %.1f | Q3 %.1f | p99 %.1f)', ...
+                               n_depths, s_all.q1, s_all.median, s_all.q3, s_all.p99));
+
+    for b = 1:n_pre
+        pk = preset_keys{b};
+        s_d = depth_stats.(pk);
+        col_use = preset_cols{min(b, length(preset_cols))};
+        ls_use  = line_styles{min(b, length(line_styles))};
+        h_cdf_lines(1 + b) = plot(ax_cdf, s_d.cdf_x, s_d.cdf_y, ls_use, ...
+            'Color', col_use, 'LineWidth', 1.4, ...
+            'DisplayName', sprintf('%s  (Med %.1f | IQR %.1f-%.1f)', s_d.label, s_d.median, s_d.q1, s_d.q3));
+    end
+
+    xline(ax_cdf, th_green,   ':', 'Color', c_green,  'LineWidth', 1.6, 'HandleVisibility', 'off');
+    xline(ax_cdf, th_red,     ':', 'Color', c_yellow, 'LineWidth', 1.6, 'HandleVisibility', 'off');
+    xline(ax_cdf, max_spread, ':', 'Color', c_red,    'LineWidth', 1.6, 'HandleVisibility', 'off');
+    if th_green < 0.14 * x_lim_max
+        text(ax_cdf, th_green + 0.18, 106, sprintf('Q1: %.1f dB (25%%)', th_green), ...
+             'Color', c_green, 'FontSize', 8.3, 'FontName', 'Consolas', 'FontWeight', 'bold', ...
+             'HorizontalAlignment', 'left', 'VerticalAlignment', 'middle');
+    else
+        text(ax_cdf, th_green - 0.15, 106, sprintf('Q1: %.1f dB (25%%)', th_green), ...
+             'Color', c_green, 'FontSize', 8.3, 'FontName', 'Consolas', 'FontWeight', 'bold', ...
+             'HorizontalAlignment', 'right', 'VerticalAlignment', 'middle');
+    end
+    text(ax_cdf, th_red + 0.15, 106, sprintf('Q3: %.1f dB (75%%)', th_red), ...
+         'Color', c_yellow, 'FontSize', 8.3, 'FontName', 'Consolas', 'FontWeight', 'bold', ...
+         'HorizontalAlignment', 'left', 'VerticalAlignment', 'middle');
+    text(ax_cdf, max_spread - 0.15, 106, sprintf('Full Red: %.1f dB (p99)', max_spread), ...
+         'Color', c_red, 'FontSize', 8.3, 'FontName', 'Consolas', 'FontWeight', 'bold', ...
+         'HorizontalAlignment', 'right', 'VerticalAlignment', 'middle');
 
     grid(ax_cdf, 'on');
-    set(ax_cdf, 'GridColor', c_grid, 'GridAlpha', 0.5);
-    xlim(ax_cdf, [0, 20]);
-    ylim(ax_cdf, [0, 105]);
+    set(ax_cdf, 'GridColor', c_grid, 'GridAlpha', 0.45);
+    xlim(ax_cdf, [0, x_lim_max]);
+    ylim(ax_cdf, [0, 113]);
+    yticks(ax_cdf, 0:20:100);
     xlabel(ax_cdf, 'Transmission Loss Spread \DeltaTL = Max - Min (dB)', 'FontSize', 9, 'FontName', 'Consolas', 'Color', c_text);
-    ylabel(ax_cdf, 'Cumulative Range Points (%)', 'FontSize', 9, 'FontName', 'Consolas', 'Color', c_text);
-    title(ax_cdf, {'CUMULATIVE SPREAD DISTRIBUTION ACROSS ALL SENSOR DEPTHS'}, ...
-          'Color', [0.85, 0.85, 0.85], 'FontSize', 9.5, 'FontName', 'Consolas', 'FontWeight', 'bold');
-    h_leg = legend(ax_cdf, 'TextColor', [0.85, 0.85, 0.85], 'Color', c_ax_bg, ...
-                   'EdgeColor', [0.25, 0.25, 0.25], 'Location', 'southeast', ...
-                   'FontSize', 8, 'FontName', 'Consolas');
+    ylabel(ax_cdf, 'Cumulative Cells (%)', 'FontSize', 9, 'FontName', 'Consolas', 'Color', c_text);
+    title(ax_cdf, sprintf('CUMULATIVE UNCERTAINTY ACROSS ALL %d DEPTHS (GRAY CLOUD = INDIVIDUAL DEPTHS)', n_depths), ...
+          'Color', [0.88, 0.90, 0.92], 'FontSize', 9.0, 'FontName', 'Consolas', 'FontWeight', 'bold');
+    legend(ax_cdf, h_cdf_lines, 'TextColor', [0.88, 0.90, 0.92], 'Color', [0.06, 0.08, 0.11], ...
+           'EdgeColor', [0.28, 0.32, 0.38], 'Location', 'southeast', ...
+           'FontSize', 7.6, 'FontName', 'Consolas');
 
     % -------------------------------------------------------------
-    % 4. Dynamic Depth Switcher
+    % 3. Dynamic Key Switcher (Updates Boxplot + Histogram + CDF)
     % -------------------------------------------------------------
-    function set_active_depth(d_in)
-        active_depth = d_in;
-        s_key = sprintf('d%d', active_depth);
-        if ~isfield(depth_stats, s_key), return; end
-        s = depth_stats.(s_key);
+    active_key = 'all';
 
-        % Update button highlights
+    function set_active_key(k_in)
+        if ~isfield(depth_stats, k_in), return; end
+        active_key = k_in;
+        s = depth_stats.(active_key);
+
         for bi = 1:n_btns
-            if preset_depths(bi) == active_depth
+            if strcmp(btn_keys{bi}, active_key)
                 set(btn_handles(bi), 'BackgroundColor', [0.10, 0.48, 0.42], 'ForegroundColor', 'w', 'FontWeight', 'bold');
             else
-                set(btn_handles(bi), 'BackgroundColor', [0.09, 0.14, 0.20], 'ForegroundColor', [0.55, 0.70, 0.80], 'FontWeight', 'normal');
+                set(btn_handles(bi), 'BackgroundColor', [0.09, 0.14, 0.20], 'ForegroundColor', [0.60, 0.75, 0.85], 'FontWeight', 'normal');
             end
         end
 
-        % Highlight active depth curve in CDF plot (emphasized in Cyan, others in gray)
-        for bi = 1:n_btns
-            if isgraphics(h_cdf_lines(bi))
-                if preset_depths(bi) == active_depth
-                    set(h_cdf_lines(bi), 'Color', c_active, 'LineWidth', 2.6, 'LineStyle', '-');
-                    uistack(h_cdf_lines(bi), 'top');
+        for ci = 1:length(cdf_keys)
+            if isgraphics(h_cdf_lines(ci))
+                if strcmp(cdf_keys{ci}, active_key)
+                    set(h_cdf_lines(ci), 'Color', c_active, 'LineWidth', 3.0, 'LineStyle', '-');
+                    uistack(h_cdf_lines(ci), 'top');
                 else
-                    set(h_cdf_lines(bi), 'Color', gray_shades{bi}, 'LineWidth', 1.2, 'LineStyle', line_styles{bi});
+                    if ci == 1
+                        set(h_cdf_lines(ci), 'Color', [0.88, 0.92, 0.96], 'LineWidth', 2.0, 'LineStyle', '-');
+                    else
+                        col_p = preset_cols{min(ci - 1, length(preset_cols))};
+                        ls_p  = line_styles{min(ci - 1, length(line_styles))};
+                        set(h_cdf_lines(ci), 'Color', col_p, 'LineWidth', 1.3, 'LineStyle', ls_p);
+                    end
                 end
             end
         end
 
-        % Redraw Subplot 1 (Active Depth Histogram)
+        % --- PANEL 1: Horizontal IQR Boxplot Strip ---
+        cla(ax_box);
+        hold(ax_box, 'on');
+
+        xline(ax_box, th_green,   '--', 'Color', [c_green,  0.45], 'LineWidth', 1.2);
+        xline(ax_box, th_red,     '--', 'Color', [c_yellow, 0.45], 'LineWidth', 1.2);
+        xline(ax_box, tukey_ref,  ':',  'Color', [0.95, 0.65, 0.25, 0.45], 'LineWidth', 1.2);
+        xline(ax_box, max_spread, ':',  'Color', [c_red,    0.45], 'LineWidth', 1.2);
+
+        w_hi_plot = min(s.w_high, x_lim_max - 0.3);
+        q3_plot   = min(s.q3, x_lim_max - 0.2);
+        q1_plot   = min(s.q1, q3_plot);
+        med_plot  = min(max(s.median, q1_plot), q3_plot);
+
+        plot(ax_box, [s.w_low, q1_plot],     [1.0, 1.0], '-', 'Color', [0.75, 0.82, 0.90], 'LineWidth', 1.8);
+        plot(ax_box, [q3_plot, w_hi_plot],   [1.0, 1.0], '-', 'Color', [0.75, 0.82, 0.90], 'LineWidth', 1.8);
+        plot(ax_box, [s.w_low, s.w_low],     [0.84, 1.16], '-', 'Color', [0.75, 0.82, 0.90], 'LineWidth', 1.8);
+        plot(ax_box, [w_hi_plot, w_hi_plot], [0.84, 1.16], '-', 'Color', [0.75, 0.82, 0.90], 'LineWidth', 1.8);
+
+        patch(ax_box, [q1_plot, med_plot, med_plot, q1_plot], [0.72, 0.72, 1.28, 1.28], ...
+              [0.08, 0.46, 0.42], 'FaceAlpha', 0.85, 'EdgeColor', 'none');
+        patch(ax_box, [med_plot, q3_plot, q3_plot, med_plot], [0.72, 0.72, 1.28, 1.28], ...
+              [0.52, 0.56, 0.14], 'FaceAlpha', 0.85, 'EdgeColor', 'none');
+        plot(ax_box, [q1_plot, q3_plot, q3_plot, q1_plot, q1_plot], [0.72, 0.72, 1.28, 1.28, 0.72], ...
+             '-', 'Color', [0.88, 0.94, 0.98], 'LineWidth', 1.5);
+        plot(ax_box, [med_plot, med_plot], [0.68, 1.32], '-', 'Color', [1.0, 1.0, 1.0], 'LineWidth', 3.0);
+
+        if ~isempty(s.outliers)
+            out_vis = unique(round(min(s.outliers, x_lim_max - 0.35) * 6) / 6);
+            plot(ax_box, out_vis, ones(size(out_vis)), 'o', ...
+                 'MarkerSize', 3.8, 'MarkerFaceColor', c_red, 'MarkerEdgeColor', [1.0, 0.55, 0.55]);
+        end
+
+        text(ax_box, med_plot, 1.56, sprintf('Med: %.1f dB', s.median), ...
+             'Color', [1.0, 1.0, 1.0], 'FontSize', 8.2, 'FontName', 'Consolas', 'FontWeight', 'bold', ...
+             'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle');
+        text(ax_box, q1_plot - 0.15, 0.36, sprintf('Q1: %.1f', s.q1), ...
+             'Color', c_green, 'FontSize', 8.0, 'FontName', 'Consolas', 'FontWeight', 'bold', ...
+             'HorizontalAlignment', 'right', 'VerticalAlignment', 'middle');
+        text(ax_box, q3_plot + 0.15, 0.36, sprintf('Q3: %.1f', s.q3), ...
+             'Color', c_yellow, 'FontSize', 8.0, 'FontName', 'Consolas', 'FontWeight', 'bold', ...
+             'HorizontalAlignment', 'left', 'VerticalAlignment', 'middle');
+        if w_hi_plot > q3_plot + 1.4
+            text(ax_box, w_hi_plot, 0.36, sprintf('Whisker: %.1f', s.w_high), ...
+                 'Color', [0.95, 0.65, 0.25], 'FontSize', 8.0, 'FontName', 'Consolas', 'FontWeight', 'bold', ...
+                 'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle');
+        end
+        text(ax_box, x_lim_max - 0.25, 1.58, sprintf('IQR = %.1f dB  |  Outliers (>Q3+1.5 IQR): %.1f%%', s.iqr, s.pct_outliers), ...
+             'Color', [0.85, 0.88, 0.92], 'BackgroundColor', c_ax_bg, 'Margin', 1, ...
+             'FontSize', 8.0, 'FontName', 'Consolas', 'FontWeight', 'bold', ...
+             'HorizontalAlignment', 'right', 'VerticalAlignment', 'middle');
+
+        grid(ax_box, 'on');
+        set(ax_box, 'GridColor', c_grid, 'GridAlpha', 0.35, 'YTick', [], 'XTick', 0:2:x_lim_max, 'XTickLabel', []);
+        xlim(ax_box, [0, x_lim_max]);
+        ylim(ax_box, [0.05, 1.85]);
+        ylabel(ax_box, 'IQR Box', 'FontSize', 8.5, 'FontName', 'Consolas', 'Color', c_text);
+        title(ax_box, sprintf('%s   (%s cells)   —   IQR BOXPLOT (GEOSIT SCALE)', upper(s.label), commafy(s.n_pts)), ...
+              'Color', [0.92, 0.94, 0.96], 'FontSize', 9.2, 'FontName', 'Consolas', 'FontWeight', 'bold');
+
+        % --- PANEL 2: Histogram (Matched 1:1 with GeoSit IQR Gradient) ---
         cla(ax_hist);
         hold(ax_hist, 'on');
 
-        n_bins = 25;
-        bin_edges = linspace(0, 20, n_bins + 1); % Firmly locked [0, 20] dB scale (0.8 dB per bin)
-        counts = histcounts(s.spread, bin_edges);
+        bin_w = 0.5;
+        n_bins = round(x_lim_max / bin_w);
+        bin_edges = linspace(0, x_lim_max, n_bins + 1);
+        [counts, ~] = histcounts(min(s.spread, x_lim_max - 0.001), bin_edges);
+        pct_counts = (counts / length(s.spread)) * 100;
         bin_centers = 0.5 * (bin_edges(1:n_bins) + bin_edges(2:n_bins+1));
-        bar_w = bin_edges(2) - bin_edges(1);
 
-        % Strict 3 Colors matching GeoSit B
         for bi = 1:n_bins
             bc = bin_centers(bi);
-            if bc <= th_green
-                bar_col = c_green;   % Cyany Green (<= 4.5 dB)
-            elseif bc <= th_red
-                bar_col = c_yellow;  % Vibrant Yellow (4.5 - 7.5 dB)
-            else
-                bar_col = c_red;     % Tactical Red (> 7.5 dB)
-            end
-            bar(ax_hist, bc, counts(bi), bar_w, ...
-                'FaceColor', bar_col, 'EdgeColor', [0.04, 0.04, 0.04], 'FaceAlpha', 0.90);
+            bar_col = eval_geosit_color(bc, th_green, th_red, max_spread, c_green, c_yellow, c_red);
+            bar(ax_hist, bc, pct_counts(bi), bin_w, ...
+                'FaceColor', bar_col, 'EdgeColor', [0.04, 0.04, 0.04], 'FaceAlpha', 0.92);
         end
 
-        % Reference Lines
-        xline(ax_hist, s.median, '-', sprintf('Median: %.1f dB', s.median), ...
-              'Color', [1.0, 1.0, 1.0], 'LineWidth', 2.0, 'FontSize', 8.5, 'FontName', 'Consolas', 'FontWeight', 'bold');
-        xline(ax_hist, th_green, '--', sprintf('Green Cutoff: %.1f dB', th_green), ...
-              'Color', c_green, 'LineWidth', 1.8, 'FontSize', 8.5, 'FontName', 'Consolas', 'FontWeight', 'bold');
-        xline(ax_hist, th_red, '--', sprintf('Yellow/Red: %.1f dB', th_red), ...
-              'Color', c_red, 'LineWidth', 1.8, 'FontSize', 8.5, 'FontName', 'Consolas', 'FontWeight', 'bold');
+        y_max = max(12, max(pct_counts) * 1.40);
+
+        xline(ax_hist, th_green,   '--', 'Color', c_green,            'LineWidth', 1.8);
+        xline(ax_hist, th_red,     '--', 'Color', c_yellow,           'LineWidth', 1.8);
+        xline(ax_hist, tukey_ref,  ':',  'Color', [0.95, 0.65, 0.25], 'LineWidth', 1.6);
+        xline(ax_hist, max_spread, ':',  'Color', c_red,              'LineWidth', 1.8);
+
+        if th_green < 0.16 * x_lim_max
+            text(ax_hist, th_green + 0.18, y_max * 0.94, sprintf('Green <= %.1f (Q1)', th_green), ...
+                 'Color', c_green, 'BackgroundColor', c_ax_bg, 'Margin', 1, ...
+                 'FontSize', 8.0, 'FontName', 'Consolas', 'FontWeight', 'bold', ...
+                 'HorizontalAlignment', 'left', 'VerticalAlignment', 'top');
+        else
+            text(ax_hist, th_green - 0.15, y_max * 0.94, sprintf('Green <= %.1f (Q1)', th_green), ...
+                 'Color', c_green, 'BackgroundColor', c_ax_bg, 'Margin', 1, ...
+                 'FontSize', 8.0, 'FontName', 'Consolas', 'FontWeight', 'bold', ...
+                 'HorizontalAlignment', 'right', 'VerticalAlignment', 'top');
+        end
+        text(ax_hist, th_red + 0.15, y_max * 0.94, sprintf('Yellow = %.1f (Q3)', th_red), ...
+             'Color', c_yellow, 'BackgroundColor', c_ax_bg, 'Margin', 1, ...
+             'FontSize', 8.0, 'FontName', 'Consolas', 'FontWeight', 'bold', ...
+             'HorizontalAlignment', 'left', 'VerticalAlignment', 'top');
+        text(ax_hist, tukey_ref + 0.15, y_max * 0.80, sprintf('Whisker: %.1f', tukey_ref), ...
+             'Color', [0.95, 0.65, 0.25], 'BackgroundColor', c_ax_bg, 'Margin', 1, ...
+             'FontSize', 8.0, 'FontName', 'Consolas', 'FontWeight', 'bold', ...
+             'HorizontalAlignment', 'left', 'VerticalAlignment', 'top');
+        text(ax_hist, max_spread - 0.15, y_max * 0.94, sprintf('Full Red: %.1f (p99)', max_spread), ...
+             'Color', c_red, 'BackgroundColor', c_ax_bg, 'Margin', 1, ...
+             'FontSize', 8.0, 'FontName', 'Consolas', 'FontWeight', 'bold', ...
+             'HorizontalAlignment', 'right', 'VerticalAlignment', 'top');
 
         grid(ax_hist, 'on');
-        set(ax_hist, 'GridColor', c_grid, 'GridAlpha', 0.5);
-        xlim(ax_hist, [0, 20]); % Firmly locked to match CDF and prevent scale jumping
-        xlabel(ax_hist, 'Transmission Loss Spread \DeltaTL = Max - Min (dB)', 'FontSize', 9, 'FontName', 'Consolas', 'Color', c_text);
-        ylabel(ax_hist, 'Number of Range Cells', 'FontSize', 9, 'FontName', 'Consolas', 'Color', c_text);
-        
-        % Descriptive concise title matching GeoSit B colors
+        set(ax_hist, 'GridColor', c_grid, 'GridAlpha', 0.45, 'XTick', 0:2:x_lim_max);
+        xlim(ax_hist, [0, x_lim_max]);
+        ylim(ax_hist, [0, y_max]);
+        xlabel(ax_hist, sprintf('Transmission Loss Spread \\DeltaTL = Max - Min (dB)   [Last bin includes >%d dB tail]', x_lim_max), ...
+               'FontSize', 9, 'FontName', 'Consolas', 'Color', c_text);
+        ylabel(ax_hist, 'Share of Cells (%)', 'FontSize', 9, 'FontName', 'Consolas', 'Color', c_text);
+
         col_g = sprintf('\\color[rgb]{%.2f,%.2f,%.2f}', c_green(1), c_green(2), c_green(3));
         col_y = sprintf('\\color[rgb]{%.2f,%.2f,%.2f}', c_yellow(1), c_yellow(2), c_yellow(3));
         col_r = sprintf('\\color[rgb]{%.2f,%.2f,%.2f}', c_red(1), c_red(2), c_red(3));
 
-        title(ax_hist, {sprintf('ACOUSTIC UNCERTAINTY DISTRIBUTION (%d m DEPTH)', active_depth); ...
-                        sprintf('\\rmMedian: \\bf%.1f dB\\rm  |  Spread: \\bf%.1f - %.1f dB\\rm  |  Radar Color Breakdown: %s%.0f%% Green\\rm, %s%.0f%% Yellow\\rm, %s%.0f%% Red\\rm', ...
-                                s.median, s.min, s.max, col_g, s.pct_green, col_y, s.pct_yellow, col_r, s.pct_red)}, ...
-              'Color', [0.85, 0.85, 0.85], 'FontSize', 9.5, 'FontName', 'Consolas', 'FontWeight', 'bold');
+        title(ax_hist, sprintf('\\rmQ1 / Med / Q3 / Whisker / p99: \\bf%.1f / %.1f / %.1f / %.1f / %.1f dB\\rm (Max %.1f)  |  IQR Split: %s%.1f%% Steady\\rm, %s%.1f%% IQR\\rm, %s%.1f%% Upper\\rm', ...
+                               s.q1, s.median, s.q3, s.w_high, s.p99, s.max, col_g, s.pct_green, col_y, s.pct_yellow, col_r, s.pct_red), ...
+              'Color', [0.90, 0.92, 0.95], 'FontSize', 8.8, 'FontName', 'Consolas', 'FontWeight', 'bold');
     end
 
-    % Initialize with active depth
-    set_active_depth(active_depth);
+    set_active_key('all');
 
-    % Auto-save high-resolution image capturing all UI buttons and panels
-    png_out = fullfile(pwd, 'Outputs', 'TL_Spread_Distribution.png');
+    % Export updated PNG cleanly & mirror across canonical output folders
+    if exist(out_folder, 'dir') ~= 7
+        mkdir(out_folder);
+    end
+    png_out = fullfile(out_folder, ['TL_Spread_Distribution', version_suffix, '.png']);
     try
         drawnow;
+        pause(0.15);
         frame = getframe(fig);
         imwrite(frame.cdata, png_out);
     catch
         try
-            print(fig, png_out, '-dpng', '-r200');
+            exportgraphics(fig, png_out, 'Resolution', 180, 'BackgroundColor', c_bg_dark);
         catch
-            saveas(fig, png_out);
+            try
+                print(fig, png_out, '-dpng', '-r200');
+            catch
+                saveas(fig, png_out);
+            end
         end
     end
-    disp(['  Spread distribution figure exported: ', png_out]);
+
+    fprintf('  Spread distribution figure exported: %s\n', png_out);
+    fprintf('  ALL DEPTHS IQR STATS: Q1=%.2f | Med=%.2f | Q3=%.2f | IQR=%.2f | Whisker=%.2f | p95=%.2f | p99=%.2f | Max=%.2f dB (Outliers=%.2f%%)\n', ...
+            s_all.q1, s_all.median, s_all.q3, s_all.iqr, s_all.w_high, s_all.p95, s_all.p99, s_all.max, s_all.pct_outliers);
+    fprintf('  IQR GeoSit Split (<=%.1f / %.1f-%.1f / >%.1f dB, Red cap %.1f): %.1f%% Steady | %.1f%% IQR | %.1f%% Upper (%.2f%% >%.1f dB)\n', ...
+            th_green, th_green, th_red, th_red, max_spread, ...
+            s_all.pct_green, s_all.pct_yellow, s_all.pct_red, mean(s_all.spread > max_spread) * 100, max_spread);
+
+    if close_fig && isgraphics(fig)
+        close(fig);
+    end
+end
+
+function col = eval_geosit_color(val, th_flat, th_yel, max_sp, c_green, c_yellow, c_red)
+    if val <= th_flat
+        col = c_green;
+    elseif val <= th_yel
+        t = (val - th_flat) / max(0.01, (th_yel - th_flat));
+        col = (1 - t) * c_green + t * c_yellow;
+    else
+        t = min(1.0, max(0.0, (val - th_yel) / max(0.01, (max_sp - th_yel))));
+        col = (1 - t) * c_yellow + t * c_red;
+    end
+end
+
+function out = commafy(n)
+    out = regexprep(sprintf('%d', round(n)), '(\d)(?=(\d{3})+$)', '$1,');
 end

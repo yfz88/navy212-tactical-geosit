@@ -23,23 +23,29 @@ function run_monte_carlo(N_mc, Nbeams_run, test_name, optimize_ssp)
     %      Standard 101-point Munk canonical profile with 35m uniform spacing.
     %      Naturally fast without decimation.
     %
+    %   4. Test3 (HYCOM North Atlantic - 100m Deep Own-Ship Source + Symmetric Angles):
+    %      Same real HYCOM SSP/bathymetry as Test1 with 100m (328 ft) source depth
+    %      and symmetric -50 to +50 deg launch angles. Uses mixed-layer decimation.
+    %
     % Usage Examples:
     %   run_monte_carlo()                          % Test1, 20 runs, 1500 beams, OPTIMIZED (fast)
     %   run_monte_carlo(20, 1500, 'Test1')         % Test1, OPTIMIZED
     %   run_monte_carlo(20, 1500, 'Test1', true)   % Test1, OPTIMIZED (fast, ~8-14 min)
     %   run_monte_carlo(20, 1500, 'Test1', false)  % Test1, ALL 101 points (raw, slow ~5 hrs)
     %   run_monte_carlo(20, 1500, 'Test2')         % Test2 (Munk profile, fast)
+    %   run_monte_carlo(20, 1500, 'Test3')         % Test3 (HYCOM 100m source, OPTIMIZED)
     %
     % Shorthand Usage:
     %   run_monte_carlo('Test1')                   % Test1 optimized
     %   run_monte_carlo('Test1_all')               % Test1 all points (raw)
     %   run_monte_carlo('Test2')                   % Test2 Munk profile
+    %   run_monte_carlo('Test3')                   % Test3 HYCOM 100m source (optimized)
     %
     % Outputs:
-    %   - Results saved to: Outputs/MonteCarlo_Results.mat
-    %   - Automatically displays:
-    %       1. plot_SE_and_FOM (Full-Field 2D SE Map & Stoplight Line Plot)
-    %       2. plot_geosit_optionB (Dark Tactical Combat Display PPI Radar Console)
+    %   - Results saved to: Outputs/Case_<N>/MonteCarlo_Results[_<N>].mat
+    %   - Bellhop shade files: Outputs/Case_<N>/Test_MC_<i>[_<N>].shd.mat
+    %   - Post-processing (IQR calibration, distribution plot, HTML console)
+    %     runs separately via run_workflow('display', results_file).
 
     % -----------------------------------------------------------------------
     % 1. Parse and validate inputs
@@ -63,24 +69,49 @@ function run_monte_carlo(N_mc, Nbeams_run, test_name, optimize_ssp)
         test_name = 'Test1';
     end
 
-    test_str = lower(char(test_name));
-    if contains(test_str, 'test2')
-        base_test    = 'Test2';
+    test_str = lower(strtrim(char(test_name)));
+    is_raw = contains(test_str, 'all') || contains(test_str, 'raw') || contains(test_str, 'unopt');
+
+    test_num_tok = regexp(test_str, '(?:test\s*)?(\d+)', 'tokens', 'once');
+    if ~isempty(test_num_tok)
+        test_num       = test_num_tok{1};
+        base_test      = ['Test', test_num];
+        version_suffix = ['_', test_num];
+    else
+        base_test      = 'Test1';
+        version_suffix = '_1';
+    end
+
+    if strcmp(base_test, 'Test2')
         optimize_ssp = false; % Test2 is already uniformly spaced at 35m
         mode_label   = 'Test2 (Munk Canonical Profile - Uniform 35m Spacing)';
-    elseif contains(test_str, 'all') || contains(test_str, 'raw') || contains(test_str, 'unopt')
-        base_test    = 'Test1';
-        optimize_ssp = false;
-        mode_label   = 'Test1 (HYCOM North Atlantic - ALL 101 Raw Points, Unoptimized)';
-    else
-        base_test = 'Test1';
-        if nargin < 4 || isempty(optimize_ssp)
-            optimize_ssp = true; % Default: optimal decimation for Test1
-        end
-        if optimize_ssp
-            mode_label = 'Test1 (HYCOM North Atlantic - OPTIMIZED: Decimated Mixed Layer)';
+    elseif strcmp(base_test, 'Test3')
+        if is_raw
+            optimize_ssp = false;
+            mode_label   = 'Test3 (HYCOM North Atlantic 100m Source - ALL 101 Raw Points, Unoptimized)';
         else
-            mode_label = 'Test1 (HYCOM North Atlantic - ALL 101 Raw Points, Unoptimized)';
+            if nargin < 4 || isempty(optimize_ssp)
+                optimize_ssp = true; % Default: optimal decimation for Test3 HYCOM
+            end
+            if optimize_ssp
+                mode_label = 'Test3 (HYCOM North Atlantic 100m Source - OPTIMIZED: Decimated Mixed Layer)';
+            else
+                mode_label = 'Test3 (HYCOM North Atlantic 100m Source - ALL 101 Raw Points, Unoptimized)';
+            end
+        end
+    else
+        if is_raw
+            optimize_ssp = false;
+            mode_label   = sprintf('%s (HYCOM North Atlantic - ALL 101 Raw Points, Unoptimized)', base_test);
+        else
+            if nargin < 4 || isempty(optimize_ssp)
+                optimize_ssp = true; % Default: optimal decimation for HYCOM profiles
+            end
+            if optimize_ssp
+                mode_label = sprintf('%s (HYCOM North Atlantic - OPTIMIZED: Decimated Mixed Layer)', base_test);
+            else
+                mode_label = sprintf('%s (HYCOM North Atlantic - ALL 101 Raw Points, Unoptimized)', base_test);
+            end
         end
     end
 
@@ -103,23 +134,34 @@ function run_monte_carlo(N_mc, Nbeams_run, test_name, optimize_ssp)
         end
     end
 
-    % Determine Inputs directory
-    if exist(fullfile(pwd, 'Inputs'), 'dir')
-        indir = fullfile(pwd, 'Inputs');
-    elseif exist(fullfile(script_dir, '..', 'Inputs'), 'dir')
-        indir = fullfile(script_dir, '..', 'Inputs');
-    else
-        indir = fullfile(pwd, 'Inputs');
+    % Determine single canonical Inputs directory at repository root
+    repo_root = fileparts(fileparts(script_dir));
+    in_candidates = {
+        fullfile(repo_root, 'Inputs'), ...
+        fullfile(pwd, 'Inputs')
+    };
+    indir = in_candidates{1};
+    for c_idx = 1:length(in_candidates)
+        if exist(fullfile(in_candidates{c_idx}, [base_test '.env']), 'file') == 2
+            indir = in_candidates{c_idx};
+            break;
+        end
     end
 
-    % Determine Outputs directory
-    if exist(fullfile(pwd, 'Outputs'), 'dir')
-        outdir = fullfile(pwd, 'Outputs');
-    elseif exist(fullfile(script_dir, '..', 'Outputs'), 'dir')
-        outdir = fullfile(script_dir, '..', 'Outputs');
+    % Determine single canonical Case output folder: Outputs/Case_<N>/
+    case_tok = regexp(base_test, '(\d+)$', 'tokens', 'once');
+    if ~isempty(case_tok)
+        case_folder_name = ['Case_', case_tok{1}];
     else
-        outdir = fullfile(pwd, 'Outputs');
-        if ~exist(outdir, 'dir'), mkdir(outdir); end
+        case_folder_name = 'Case_1';
+    end
+    out_root = fullfile(repo_root, 'Outputs');
+    if exist(out_root, 'dir') ~= 7 && exist(fullfile(pwd, 'Outputs'), 'dir') == 7
+        out_root = fullfile(pwd, 'Outputs');
+    end
+    outdir = fullfile(out_root, case_folder_name);
+    if exist(outdir, 'dir') ~= 7
+        mkdir(outdir);
     end
 
     depth2plot    = 100; % Target/receiver depth for line analysis (m)
@@ -135,6 +177,24 @@ function run_monte_carlo(N_mc, Nbeams_run, test_name, optimize_ssp)
     end
     base_env_txt = fileread(base_env_path);
     env_lines    = splitlines(base_env_txt);
+
+    freq_hz = 3000.0;
+    if length(env_lines) >= 2
+        f_parsed = sscanf(strtrim(env_lines{2}), '%f', 1);
+        if ~isempty(f_parsed)
+            freq_hz = f_parsed(1);
+        end
+    end
+    launch_angles = [-50.0, 20.0];
+    for j = 1:length(env_lines)
+        if contains(lower(env_lines{j}), 'launch angles')
+            ang_parsed = sscanf(strtrim(env_lines{j}), '%f %f');
+            if length(ang_parsed) >= 2
+                launch_angles = ang_parsed(1:2)';
+            end
+            break;
+        end
+    end
 
     % Parse SSP table (lines 7 until termination token '/')
     base_z           = [];
@@ -157,7 +217,7 @@ function run_monte_carlo(N_mc, Nbeams_run, test_name, optimize_ssp)
     Nz_raw = length(base_z);
 
     % -----------------------------------------------------------------------
-    % 3. Mixed-Layer Decimation (Test1 with optimize_ssp = true)
+    % 3. Mixed-Layer Decimation (HYCOM profiles Test1/Test3 with optimize_ssp = true)
     %
     % HYCOM sigma coordinates place 35 points in the top 40m spaced 0.72m
     % apart where sound speed is flat (dc < 0.05 m/s). Bellhop's reducestep.m
@@ -165,7 +225,7 @@ function run_monte_carlo(N_mc, Nbeams_run, test_name, optimize_ssp)
     % We decimate redundant flat points while keeping the exact curve shape
     % and 100% of thermocline/deep gradients.
     % -----------------------------------------------------------------------
-    if strcmp(base_test, 'Test1') && optimize_ssp
+    if ~strcmp(base_test, 'Test2') && optimize_ssp
         min_spacing = 10.0; % meters
         dc_thresh   = 0.15; % m/s
         
@@ -199,6 +259,7 @@ function run_monte_carlo(N_mc, Nbeams_run, test_name, optimize_ssp)
     disp('================================================================');
     disp([' MONTE CARLO SIMULATION: ', num2str(N_mc), ' iterations']);
     disp([' Profile:      ', mode_label]);
+    disp([' Output Tag:   ', version_suffix, '  (MonteCarlo_Results', version_suffix, '.mat)']);
     disp([' SSP Points:   ', num2str(Nz_raw), ' raw  -->  ', num2str(Nz), ' active points']);
     disp([' Beam Count:   ', num2str(Nbeams_run), ' (Production Density: Anti-Ray Starvation)']);
     disp([' Grid Mesh:    ', num2str(N_depth_cells), ' depth x ', num2str(N_range_cells), ' range cells']);
@@ -213,6 +274,7 @@ function run_monte_carlo(N_mc, Nbeams_run, test_name, optimize_ssp)
     TL_full_sum     = [];
     r_km            = [];
     z_m             = [];
+    source_depth_m  = [];
 
     total_start = tic;
 
@@ -221,7 +283,7 @@ function run_monte_carlo(N_mc, Nbeams_run, test_name, optimize_ssp)
     % -----------------------------------------------------------------------
     for i = 1:N_mc
         iter_start = tic;
-        mc_name    = sprintf('Test_MC_%d', i);
+        mc_name    = sprintf('Test_MC_%d%s', i, version_suffix);
 
         % 5a. Copy boundary and beam pattern files from base test
         for ext = {'.bty', '.sbp', '.trc'}
@@ -298,6 +360,9 @@ function run_monte_carlo(N_mc, Nbeams_run, test_name, optimize_ssp)
         if isempty(r_km)
             r_km        = res.Pos.r.r / 1000;
             z_m         = res.Pos.r.z;
+            if isfield(res.Pos, 's') && isfield(res.Pos.s, 'z') && ~isempty(res.Pos.s.z)
+                source_depth_m = res.Pos.s.z(1);
+            end
             TL_all      = zeros(N_mc, length(r_km));
             TL_full_sum = zeros(size(TL_2d));
         end
@@ -316,7 +381,7 @@ function run_monte_carlo(N_mc, Nbeams_run, test_name, optimize_ssp)
     % 6. Clean up temporary input copies
     % -----------------------------------------------------------------------
     for i = 1:N_mc
-        mc_name = sprintf('Test_MC_%d', i);
+        mc_name = sprintf('Test_MC_%d%s', i, version_suffix);
         for ext = {'.env', '.ssp', '.bty', '.sbp', '.trc'}
             f_temp = fullfile(indir, [mc_name ext{1}]);
             if exist(f_temp, 'file'), delete(f_temp); end
@@ -327,20 +392,16 @@ function run_monte_carlo(N_mc, Nbeams_run, test_name, optimize_ssp)
     % 7. Save Master Results
     % -----------------------------------------------------------------------
     TL_full_mean = TL_full_sum / N_mc;
-    results_file = fullfile(outdir, 'MonteCarlo_Results.mat');
+    shd_pattern  = ['Test_MC_%d', version_suffix, '.shd.mat'];
+    results_file = fullfile(outdir, ['MonteCarlo_Results', version_suffix, '.mat']);
     save(results_file, 'r_km', 'z_m', 'base_z', 'base_c', 'all_perturbed_c', ...
          'delta_z_all', 'bulk_offset_all', 'TL_all', 'TL_full_mean', 'depth2plot', ...
-         'N_mc', 'base_test', 'optimize_ssp');
+         'N_mc', 'base_test', 'test_name', 'optimize_ssp', 'source_depth_m', ...
+         'freq_hz', 'launch_angles', 'version_suffix', 'shd_pattern');
 
     disp('================================================================');
     disp([' Monte Carlo complete in ', num2str(toc(total_start)/60, '%.1f'), ' minutes.']);
     disp([' Master results saved to: ', results_file]);
-    disp(' Opening Tactical Combat Display & Sonar Analysis Figures...');
+    disp([' Next: run run_workflow(''display'', ''', results_file, ''') to generate displays.']);
     disp('================================================================');
-
-    % -----------------------------------------------------------------------
-    % 8. Automatically display both tactical figures
-    % -----------------------------------------------------------------------
-    plot_SE_and_FOM(results_file);
-    plot_geosit_optionB(results_file);
 end

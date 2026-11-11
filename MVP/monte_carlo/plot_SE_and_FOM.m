@@ -11,29 +11,16 @@ function plot_SE_and_FOM(results_file)
     %   DT = 6 dB    (Detection Threshold)
     %   FOM = SL + DI - (NL + DT) = 150 + 20 - (60 + 6) = 104 dB
     
-    if nargin < 1 || isempty(results_file)
-        results_file = fullfile(pwd, 'Outputs', 'MonteCarlo_Results.mat');
-        if ~exist(results_file, 'file')
-            script_dir = fileparts(mfilename('fullpath'));
-            candidates = {
-                fullfile(script_dir, '..', 'Outputs', 'MonteCarlo_Results.mat'),
-                fullfile(script_dir, 'Outputs', 'MonteCarlo_Results.mat'),
-                fullfile(pwd, '..', 'Outputs', 'MonteCarlo_Results.mat')
-            };
-            for c_idx = 1:length(candidates)
-                if exist(candidates{c_idx}, 'file')
-                    results_file = candidates{c_idx};
-                    break;
-                end
-            end
-        end
+    if nargin < 1
+        results_file = [];
     end
-    
-    if ~exist(results_file, 'file')
-        error('Results file not found: %s. Run run_monte_carlo first.', results_file);
+
+    script_dir = fileparts(mfilename('fullpath'));
+    mvp_dir    = fileparts(script_dir);
+    if ~exist('load_mc_results', 'file')
+        addpath(mvp_dir);
     end
-    
-    data = load(results_file);
+    [results_file, data, out_folder, version_suffix] = load_mc_results(results_file, script_dir);
     r_km = data.r_km;
     z_m = data.z_m;
     TL_all = data.TL_all;
@@ -69,11 +56,18 @@ function plot_SE_and_FOM(results_file)
     if ~isempty(idx_50pct),      r_50pct      = r_km(idx_50pct); end
     if ~isempty(idx_10pct),      r_cutoff     = r_km(idx_10pct); end
     
+    tag_suffix = '';
+    if isfield(data, 'base_test') && ~isempty(data.base_test)
+        tag_suffix = [' (', char(data.base_test), ')'];
+    elseif ~isempty(version_suffix)
+        tag_suffix = [' (', version_suffix, ')'];
+    end
+
     % -------------------------------------------------------------
     % Figure 1: 2D Transmission Loss (TL) Field (Depth vs. Range)
     % Matches NUWC plot_TL2.m standard benchmark styling
     % -------------------------------------------------------------
-    fig1 = figure('Position', [80, 100, 950, 520], 'Name', '2D Transmission Loss (TL) Field');
+    fig1 = figure('Position', [80, 100, 950, 520], 'Name', ['2D Transmission Loss (TL) Field', tag_suffix]);
     
     imagesc(r_km, z_m, TL_full_mean);
     set(gca, 'YDir', 'reverse');
@@ -94,14 +88,36 @@ function plot_SE_and_FOM(results_file)
     
     if isfield(data, 'base_test') && strcmpi(data.base_test, 'Test2')
         env_label = 'Munk Profile';
+    elseif isfield(data, 'base_test') && strcmpi(data.base_test, 'Test3')
+        env_label = 'North Atlantic (Test 3)';
     else
         env_label = 'North Atlantic';
     end
-    
+
+    freq_hz = 3000;
+    if isfield(data, 'freq_hz') && ~isempty(data.freq_hz)
+        freq_hz = data.freq_hz(1);
+    end
+    zs_m = 20;
+    if isfield(data, 'source_depth_m') && ~isempty(data.source_depth_m)
+        zs_m = data.source_depth_m(1);
+    elseif isfield(data, 'base_test') && (strcmpi(data.base_test, 'Test2') || strcmpi(data.base_test, 'Test3'))
+        zs_m = 100;
+    end
+    ang_min = -50;
+    ang_max = 20;
+    if isfield(data, 'launch_angles') && length(data.launch_angles) >= 2
+        ang_min = data.launch_angles(1);
+        ang_max = data.launch_angles(2);
+    elseif isfield(data, 'base_test') && strcmpi(data.base_test, 'Test3')
+        ang_min = -50;
+        ang_max = 50;
+    end
+
     xlabel('Range (km)', 'FontSize', 12);
     ylabel('Depth (m)', 'FontSize', 12);
     title({sprintf('2D Transmission Loss (TL), %s', env_label); ...
-           'freq = 3000 Hz, Z_S = 20 m, minA = -50°, maxA = 20°'}, ...
+           sprintf('freq = %g Hz, Z_S = %g m, minA = %g°, maxA = %g°', freq_hz, zs_m, ang_min, ang_max)}, ...
           'FontSize', 12, 'Interpreter', 'none');
     grid on;
     set(gca, 'FontSize', 11);
@@ -109,7 +125,7 @@ function plot_SE_and_FOM(results_file)
     % -------------------------------------------------------------
     % Figure 2: Transmission Loss (TL) Curves & FOM Threshold
     % -------------------------------------------------------------
-    fig2 = figure('Position', [120, 100, 950, 520], 'Name', 'Monte Carlo Transmission Loss & FOM');
+    fig2 = figure('Position', [120, 100, 950, 520], 'Name', ['Monte Carlo Transmission Loss & FOM', tag_suffix]);
     hold on;
     
     % Plot all Monte Carlo realizations
@@ -131,7 +147,7 @@ function plot_SE_and_FOM(results_file)
     title(sprintf('Monte Carlo Transmission Loss at %d m Receiver Depth (N = %d runs, Monotone PCHIP ACS)', depth2plot, N_mc), ...
           'FontSize', 12);
     legend([h_fom, h_mean, h_mc(1)], ...
-           {sprintf('FOM Threshold (%d dB)', FOM), 'Ensemble Mean TL', 'Monte Carlo Realizations (20 runs)'}, ...
+           {sprintf('FOM Threshold (%d dB)', FOM), 'Ensemble Mean TL', sprintf('Monte Carlo Realizations (%d runs)', N_mc)}, ...
            'Location', 'SouthWest', 'FontSize', 11);
     set(gca, 'FontSize', 11);
     
@@ -155,8 +171,11 @@ function plot_SE_and_FOM(results_file)
     disp('================================================================');
     
     % Auto-save high-resolution slide-ready images to Outputs folder
-    png1_path = fullfile(pwd, 'Outputs', 'Transmission_Loss_2D_Field.png');
-    png2_path = fullfile(pwd, 'Outputs', 'Transmission_Loss_Curves.png');
+    if exist(out_folder, 'dir') ~= 7
+        mkdir(out_folder);
+    end
+    png1_path = fullfile(out_folder, ['Transmission_Loss_2D_Field', version_suffix, '.png']);
+    png2_path = fullfile(out_folder, ['Transmission_Loss_Curves', version_suffix, '.png']);
     try
         exportgraphics(fig1, png1_path, 'Resolution', 200);
         exportgraphics(fig2, png2_path, 'Resolution', 200);
